@@ -1,40 +1,57 @@
-module Sidekiq::HerokuAutoscale
-  # Sidekiq client middleware
-  # Performs scale-up when items are queued and there are no workers running
-  class Client
-    def initialize(dyno_manager)
-      @dyno_manager = dyno_manager
+module Sidekiq
+  module HerokuAutoscale
+
+    # Sidekiq client middleware
+    # Performs scale-up when items are queued and there are no workers running
+    class Client
+      def initialize(queue_managers)
+        @queue_managers = queue_managers
+      end
+
+      def call(worker_class, item, queue, _=nil)
+        yield
+      ensure
+        ClientThrottle.instance.update(@queue_managers[queue] || @queue_managers['*'])
+      end
     end
 
-    def call(worker_class, item, queue, _=nil)
-      result = yield
+    # Throttles calls to update a dyno manager.
+    # Assures that a manager will only 
+    class ClientThrottle
+      @mutex = Mutex.new
 
-      manager = @dyno_manager.is_a?(Hash) ? @dyno_manager[queue] : @dyno_manager
-      ClientThrottle.update(manager)
+      def self.instance
+        return @instance if @instance
+        @mutex.synchronize { @instance ||= new }
+        @instance
+      end
 
-      result
+      def initialize
+        @scheduled = {}
+      end
+
+      # Update manager immediately when ready for an update.
+      # Otherwise, schedule it to update later. 
+      def update(manager)
+        return unless manager
+        unless manager.throttle_update!
+          update_later!(manager)
+        end
+      end
+
+      # Adds a manager to the scheduled set,
+      # then polls managers until each runs another update.
+      def update_later!(manager)
+        @scheduled[manager.process_name] = manager
+        @throttle ||= Thread.new do
+          while @scheduled.size > 0
+            @scheduled.reject! { |k, m| m.throttle_update! }
+            sleep 0.5
+          end
+          @throttle = nil
+        end
+      end
     end
-  end
 
-  class ClientThrottle
-    @mutex = Mutex.new
-
-    def self.instance
-      return @instance if @instance
-      @mutex.synchronize { @instance ||= new }
-      @instance
-    end
-
-    def self.update(dyno_manager)
-      return unless dyno_manager
-      instance.run_update(dyno_manager)
-    end
-
-    def initialize
-    end
-
-    def run_update(dyno_manager)
-      dyno_manager.update!
-    end
   end
 end

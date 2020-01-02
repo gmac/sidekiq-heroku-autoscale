@@ -6,7 +6,7 @@ Gem::Specification.new do |s|
   s.name        = "sidekiq_heroku_autoscale"
   s.version     = Sidekiq::HerokuAutoscale::VERSION
   s.authors     = ["Greg MacWilliam", "Justin Love", "Fix Peña"]
-  s.homepage    = "https://github.com/JustinLove/autoscaler"
+  s.homepage    = "https://github.com/gmac/sidekiq-heroku-autoscale"
   s.summary     = %q{Start/stop Sidekiq workers on Heroku}
   s.description = %q{Currently provides a Sidekiq middleware that does 0/1 scaling of Heroku processes}
   s.licenses    = ["MIT"]
