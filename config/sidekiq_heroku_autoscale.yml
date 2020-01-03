@@ -1,7 +1,8 @@
+sidekiq_autostart: true
 processes:
   worker:
     system:
-      watch_queues: 
+      watch_queues:
         - *
       include_retrying: false
       include_scheduled: true

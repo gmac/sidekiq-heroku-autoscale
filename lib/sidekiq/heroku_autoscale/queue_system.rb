@@ -10,7 +10,6 @@ module Sidekiq
         @watch_queues = [watch_queues].flatten.uniq
         @include_retrying = include_retrying
         @include_scheduled = include_scheduled
-        @quiet = false
       end
 
       def all_queues?
@@ -50,15 +49,32 @@ module Sidekiq
         !has_work?
       end
 
-      def quiet!
-        @quiet = true
-        ::Sidekiq::ProcessSet.new.each(&:quiet!)
+      def all_quiet?
+        sidekiq_processes.all?(&:stopping?)
+      end
+
+      def quietdown!(scale)
+        # processes have hostnames formatted as "worker.1", "worker.2", "sidekiq.1", etc...
+        # this groups processes by their name, then sorts them by number, then quiets all beyond scale
+        sidekiq_processes.group_by { |p| p['hostname'].split('.').first }.each do |group|
+          group.sort_by { |p| p['hostname'].split('.').last.to_i }
+            .reverse
+            .take([group.length-scale, group.length].max)
+            .each(&:quiet!)
+        end
       end
 
     private
 
       def sidekiq_queues
         ::Sidekiq::Stats.new.queues
+      end
+
+      def sidekiq_processes
+        process_set = ::Sidekiq::ProcessSet.new
+        # select all processes with queues that intersect with watched queues
+        process_set = process_set.select { |p| (p['queues'] & @watch_queues).any? } unless all_queues?
+        process_set
       end
 
       def count_jobs(job_set)

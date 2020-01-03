@@ -1,2 +1,2 @@
-require "sidekiq"
-require "sidekiq/heroku_autoscale"
+require 'sidekiq'
+require 'sidekiq/heroku_autoscale'

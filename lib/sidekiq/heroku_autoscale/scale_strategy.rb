@@ -22,10 +22,8 @@ module Sidekiq
         end
       end
 
-    private
-
       def binary(sys)
-        sys.has_work? ? @max_workers : 0
+        sys.has_work? ? [sys.total_work, @max_workers].min : 0
       end
 
       def linear(sys)
@@ -40,9 +38,9 @@ module Sidekiq
         scaled_capacity_percentage = scale_factor * total_capacity
 
         ideal_workers = ([0, scaled_capacity_percentage].max * @max_workers).ceil
-        min_scale = [sys.workers, ideal_workers].max  # Don't scale down past number of currently engaged workers
-        max_scale = [min_workers,  @max_workers].min  # Don't scale up past number of max workers
-        [min_scale, max_scale].min
+        minimum_workers = [sys.workers, ideal_workers].max  # Don't scale down past number of currently engaged workers
+        maximum_workers = [minimum_workers, @max_workers].min  # Don't scale up past number of max workers
+        [minimum_workers, maximum_workers].min
       end
     end
 

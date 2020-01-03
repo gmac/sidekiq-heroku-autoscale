@@ -1,39 +1,45 @@
-require "heroku_autoscale/client"
-require "heroku_autoscale/dyno_manager"
-require "heroku_autoscale/queue_system"
-require "heroku_autoscale/scale_strategy"
-require "heroku_autoscale/server"
-require "heroku_autoscale/server_monitor"
+require_relative 'heroku_autoscale/dyno_manager'
+require_relative 'heroku_autoscale/client'
+require_relative 'heroku_autoscale/server'
 
 module Sidekiq
   module HerokuAutoscale
 
     def self.setup(options)
-      queue_managers = DynoManager.build_from_config(options.with_indifferent_access)
+      options = options.with_indifferent_access
+      queue_managers = DynoManager.build_from_config(options)
 
-      if Sidekiq.server?
-        # configure sidekiq queue server
-        Sidekiq.configure_server do |config|
-          config.on(:start) do
-            dyno_name = ENV['DYNO'] || ENV['DYNO_NAME']
-            next unless dyno_name
+      # configure sidekiq queue server
+      Sidekiq.configure_server do |config|
+        config.on(:startup) do
+          dyno_name = ENV['DYNO'] || ENV['DYNO_NAME']
+          next unless dyno_name
 
-            manager = queue_managers.values.detect { |m| m.process_name == dyno_name.split('.').first }
-            next unless manager
+          manager = queue_managers.values.detect { |m| m.process_name == dyno_name.split('.').first }
+          next unless manager
 
-            ServerMonitor.update(manager)
-          end
-
-          config.server_middleware do |chain|
-            chain.add(Server, queue_managers)
-          end
+          Server.throttle.update(manager)
         end
-      else
-        # configure sidekiq app client
-        Sidekiq.configure_client do |config|
-          config.client_middleware do |chain|
-            chain.add(Client, queue_managers)
-          end
+
+        config.server_middleware do |chain|
+          chain.add(Server, queue_managers)
+        end
+
+        # for jobs that queue other jobs...
+        config.client_middleware do |chain|
+          chain.add(Client, queue_managers)
+        end
+      end
+
+      # configure sidekiq app client
+      Sidekiq.configure_client do |config|
+        config.on(:startup) do
+          next unless options[:sidekiq_autostart]
+          queue_managers.values.each { |m| Client.throttle.update(m) }
+        end
+
+        config.client_middleware do |chain|
+          chain.add(Client, queue_managers)
         end
       end
     end

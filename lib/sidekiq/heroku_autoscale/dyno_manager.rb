@@ -1,5 +1,6 @@
 require 'platform-api'
-require 'autoscaler/counter_cache_memory'
+require_relative 'queue_system'
+require_relative 'scale_strategy'
 
 module Sidekiq
   module HerokuAutoscale
@@ -12,7 +13,7 @@ module Sidekiq
       def self.build_from_config(config)
         token = config[:api_token] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN']
         app = config[:app_name] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP']
-        
+
         config[:processes].each_with_object({}) do |(name, opts), memo|
           manager = DynoManager.new(api_token: token, app_name: app, process_name: name, **opts)
           manager.queue_system.watch_queues.each do |queue_name|
@@ -40,18 +41,25 @@ module Sidekiq
         @process_name = process_name
         @queue_system = QueueSystem.new(system)
         @scale_strategy = ScaleStrategy.new(scale)
+        @started_at = Time.now.utc
+        @minimum_uptime = 1
         @throttle = 10
       end
 
       # Checks if the manager has never been updated,
       # or if the last update exceeds the throttle duration,
       # and assures that there's no cross-process
-      def ready_for_update?
-        # Check local configuration first to see if last update has expired
+      def ready_for_update?(requested_at=nil)
+        # check local configuration first to see if last update has expired
         expired_locally = !@last_update || Time.now.utc - @last_update >= @throttle
         return false unless expired_locally
 
-        # Assimilate updates cached in redis that may have come from another process
+        # check if local update is newer than the request time
+        # update times may be assimilated from other processes (see cached_update)
+        exceeds_request = requested_at && @last_update > requested_at
+        return false if exceeds_request
+
+        # assimilate updates cached in redis that may have come from other processes
         if cached_update = HerokuAutoscale.redis { |c| c.get(redis_key(:update)) }
           @last_update = cached_update
           return false
@@ -59,20 +67,18 @@ module Sidekiq
         true
       end
 
-      def throttle_update!
-        return false unless ready_for_update?
+      # requests upscaling of the process
+      # returns status indicator (was update performed?)
+      def upscale!(requested_at=nil)
+        return false unless ready_for_update?(requested_at)
         update!
         true
       end
 
-      def update!
-        @last_update = Time.now.utc
-        HerokuAutoscale.redis { |c| c.setex(redis_key(:update), @throttle * 60, @last_update) }
-        scale = scale_strategy.call(queue_system)
-        if scale != get_dyno_count
-          queue_system.quiet! if scale.zero?
-          set_dyno_count(scale)
-        end
+      def wait_for_downscale!(requested_at=nil)
+        return false unless ready_for_update?(requested_at)
+        count = update!
+        count.zero? && Time.now.utc - @started_at >= @minimum_uptime
       end
 
       def exception_handler
@@ -83,6 +89,18 @@ module Sidekiq
       end
 
     private
+
+      def update!
+        @last_update = Time.now.utc
+        HerokuAutoscale.redis { |c| c.setex(redis_key(:update), @throttle, @last_update) }
+        scale = scale_strategy.call(queue_system)
+        count = get_dyno_count
+        if scale != count
+          queue_system.quietdown!(scale) if scale < count
+          set_dyno_count(scale)
+        end
+        count
+      end
 
       def redis_key(action)
         "#{self.class.name.underscore}/#{action}/#{process_name}"
