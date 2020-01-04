@@ -38,7 +38,7 @@ module Sidekiq
         scaled_capacity_percentage = scale_factor * total_capacity
 
         ideal_workers = ([0, scaled_capacity_percentage].max * @max_workers).ceil
-        minimum_workers = [sys.workers, ideal_workers].max  # Don't scale down past number of currently engaged workers
+        minimum_workers = [sys.dynos, ideal_workers].max  # Don't scale down past number of currently engaged workers
         maximum_workers = [minimum_workers, @max_workers].min  # Don't scale up past number of max workers
         [minimum_workers, maximum_workers].min
       end

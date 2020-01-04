@@ -44,16 +44,5 @@ module Sidekiq
       end
     end
 
-    def self.redis(source=nil, &block)
-      source ||= ::Sidekiq.method(:redis)
-      if source.respond_to?(:call) && !source.kind_of?(Redis)
-        source.call(&block)
-      elsif source.respond_to?(:with)
-        source.with(&block)
-      else
-        block.call(source)
-      end
-    end
-
   end
 end

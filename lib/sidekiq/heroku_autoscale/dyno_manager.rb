@@ -30,8 +30,6 @@ module Sidekiq
       attr_reader :client, :app_name, :process_name, :last_update
       attr_reader :queue_system, :scale_strategy
 
-      attr_writer :exception_handler
-
       # @param [String] process_name process process_name this scaler controls
       # @param [String] token Heroku OAuth access token
       # @param [String] app_name Heroku app_name name
@@ -60,7 +58,7 @@ module Sidekiq
         return false if exceeds_request
 
         # assimilate updates cached in redis that may have come from other processes
-        if cached_update = HerokuAutoscale.redis { |c| c.get(redis_key(:update)) }
+        if cached_update = ::Sidekiq.redis { |c| c.get(redis_key(:update)) }
           @last_update = cached_update
           return false
         end
@@ -88,11 +86,13 @@ module Sidekiq
         end
       end
 
+      attr_writer :exception_handler
+
     private
 
       def update!
         @last_update = Time.now.utc
-        HerokuAutoscale.redis { |c| c.setex(redis_key(:update), @throttle, @last_update) }
+        ::Sidekiq.redis { |c| c.setex(redis_key(:update), @throttle, @last_update) }
         scale = scale_strategy.call(queue_system)
         count = get_dyno_count
         if scale != count
