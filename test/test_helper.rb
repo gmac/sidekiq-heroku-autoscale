@@ -5,7 +5,7 @@ require 'minitest/pride'
 require 'minitest/autorun'
 require 'sidekiq_heroku_autoscale'
 
-REDIS = Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736')
+Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736')
 
 class TestQueueSystem
   attr_accessor :total_work, :dynos
@@ -26,4 +26,13 @@ end
 
 def assert_not(val)
   assert !val
+end
+
+def assert_not_equal(exp, val)
+  assert exp != val
+end
+
+def assert_raises_message(klass, pattern, &block)
+  err = assert_raises(klass, &block)
+  assert_match pattern, err.message
 end

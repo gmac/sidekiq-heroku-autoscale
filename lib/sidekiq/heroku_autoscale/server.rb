@@ -1,4 +1,4 @@
-require_relative 'throttle'
+require_relative 'poll_interval'
 
 module Sidekiq
   module HerokuAutoscale
@@ -8,10 +8,10 @@ module Sidekiq
     class Server
       @mutex = Mutex.new
 
-      def self.throttle
-        return @throttle if @throttle
-        @mutex.synchronize { @throttle ||= Throttle.new(before_update: 10) }
-        @throttle
+      def self.monitor
+        return @monitor if @monitor
+        @mutex.synchronize { @monitor ||= PollInterval.new(:wait_for_shutdown!, before_update: 10) }
+        @monitor
       end
 
       def initialize(queue_managers)
@@ -21,7 +21,7 @@ module Sidekiq
       def call(worker_class, item, queue, _=nil)
         yield
       ensure
-        self.class.throttle.update(@queue_managers[queue] || @queue_managers['*'])
+        self.class.monitor.update(@queue_managers[queue] || @queue_managers['*'])
       end
     end
 

@@ -24,6 +24,10 @@ module Sidekiq
         sidekiq_processes.size
       end
 
+      def stopping
+        sidekiq_processes.select(&:stopping?).size
+      end
+
       # number of worker threads currently running sidekiq jobs
       # counts all queue-specific threads across all dynos (process instances)
       def threads
@@ -68,15 +72,27 @@ module Sidekiq
         memoized.size > 0 && memoized.all?(&:stopping?)
       end
 
+      def any_quiet?
+        sidekiq_processes.any?(&:stopping?)
+      end
+
+      # When scaling down workers, heroku stops the one with the highest number...
+      # from https://stackoverflow.com/questions/25215334/scale-down-specific-heroku-worker-dynos
       def quietdown!(scale)
+        quieted = false
         # processes have hostnames formatted as "worker.1", "worker.2", "sidekiq.1", etc...
-        # this groups processes by their name, then sorts them by number, then quiets all beyond scale
+        # group processes by type, then sort by number, and quiet beyond scale.
         sidekiq_processes.group_by { |p| p['hostname'].split('.').first }.each do |group|
-          group.sort_by { |p| p['hostname'].split('.').last.to_i }
-            .reverse
-            .take([group.length-scale, group.length].max)
-            .each(&:quiet!)
+          # assuming setup validations were observed, there should only ever be a single group here.
+          group.sort_by { |p| p['hostname'].split('.').second.to_i }.each_with_index do |process, index|
+            if index + 1 > scale
+              process.quiet!
+              quieted = true
+            end
+          end
         end
+
+        quieted
       end
 
     private

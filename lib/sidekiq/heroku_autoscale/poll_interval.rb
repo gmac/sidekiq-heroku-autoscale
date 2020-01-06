@@ -1,11 +1,11 @@
 module Sidekiq
   module HerokuAutoscale
 
-    class Throttle
-      def initialize(before_update: 0, after_update: 0, upscale_only: false)
+    class PollInterval
+      def initialize(method_name, before_update: 0, after_update: 0)
+        @method_name = method_name
         @before_update = before_update
         @after_update = after_update
-        @upscale_only = upscale_only
         @requests = {}
       end
 
@@ -19,7 +19,7 @@ module Sidekiq
           begin
             while @requests.size > 0
               sleep(@before_update) if @before_update > 0
-              @requests.reject! { |k, v| v[:manager].upscale!(v[:request_at]) }
+              @requests.reject! { |k, v| v[:manager].send(@method_name, v[:request_at]) }
               sleep(@after_update) if @after_update > 0
             end
           ensure

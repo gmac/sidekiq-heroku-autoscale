@@ -10,7 +10,7 @@ module Sidekiq
 
       def self.throttle
         return @throttle if @throttle
-        @mutex.synchronize { @throttle ||= Throttle.new(after_update: 1, upscale_only: true) }
+        @mutex.synchronize { @throttle ||= PollInterval.new(:wait_for_update!, after_update: 1) }
         @throttle
       end
 

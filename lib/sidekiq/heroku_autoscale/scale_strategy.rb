@@ -23,7 +23,7 @@ module Sidekiq
       end
 
       def binary(sys)
-        sys.has_work? ? [sys.total_work, @max_workers].min : 0
+        sys.has_work? ? @max_workers : 0
       end
 
       def linear(sys)
