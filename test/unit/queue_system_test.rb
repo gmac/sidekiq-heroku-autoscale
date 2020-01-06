@@ -53,30 +53,6 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     end
   end
 
-  # describe 'active_dynos' do
-  #   it 'counts all dynos while empty' do
-  #     subject = @subject.new(watch_queues: '*')
-  #     assert_equal 0, subject.active_dynos
-  #   end
-
-  #   it 'counts all dynos while running' do
-  #     subject = @subject.new(watch_queues: '*')
-  #     process_workers('worker.1' => %w[default low], 'quiet.2' => %w[high])
-  #     assert_equal 1, subject.active_dynos
-  #   end
-
-  #   it 'counts select dynos while empty' do
-  #     subject = @subject.new(watch_queues: %w[default low])
-  #     assert_equal 0, subject.active_dynos
-  #   end
-
-  #   it 'counts select dynos while running' do
-  #     subject = @subject.new(watch_queues: %w[default low])
-  #     process_workers('worker.1' => %w[default], 'quiet.2' => %w[low high], 'worker.3' => %w[high])
-  #     assert_equal 1, subject.active_dynos
-  #   end
-  # end
-
   describe 'threads' do
     it 'counts all threads while empty' do
       subject = @subject.new(watch_queues: '*')
@@ -308,7 +284,21 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
   end
 
   describe 'quietdown!' do
+    it 'sends quiet signals to numbered processes above a threshold' do
+      subject = @subject.new(watch_queues: %w[default low])
+      process_workers('worker.3' => %w[low], 'worker.1' => %w[default], 'worker.2' => %w[default])
+      quietable_stubs(subject)
 
+      assert subject.quietdown!(1) # downscaled
+      assert_not subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
+      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.2' }.stopping?
+      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.3' }.stopping?
+      assert_not subject.quietdown!(1) # no change
+
+      assert subject.quietdown!(0) # downscaled
+      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
+      assert_not subject.quietdown!(0) # no change
+    end
   end
 
   def enqueue_jobs(queues)
@@ -347,5 +337,17 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
         Sidekiq.redis { |c| c.hmset("#{key}:workers", "1#{pindex}#{tindex}", Sidekiq.dump_json(wdata)) }
       end
     end
+  end
+
+  def quietable_stubs(subject)
+    # map all process objects with self-flagging quiet! stubs
+    stubbed = subject.sidekiq_processes.map do |p|
+      def p.quiet!; @attribs['quiet'] = 'true'; end
+      p
+    end
+
+    # stub the process set to return the stubbed instances
+    subject.instance_variable_set(:@stubbed_sidekiq_processes, stubbed)
+    def subject.sidekiq_processes; @stubbed_sidekiq_processes; end
   end
 end

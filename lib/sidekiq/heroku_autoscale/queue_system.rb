@@ -19,13 +19,10 @@ module Sidekiq
       end
 
       # number of dynos (process instances) running sidekiq
-      # this may include one or more instances of one or more heroku process types
+      # this may include one-or-more instances of one-or-more heroku process types
+      # (though they should all be one process type if setup validation was observed)
       def dynos
         sidekiq_processes.size
-      end
-
-      def stopping
-        sidekiq_processes.select(&:stopping?).size
       end
 
       # number of worker threads currently running sidekiq jobs
@@ -81,11 +78,11 @@ module Sidekiq
       def quietdown!(scale)
         quieted = false
         # processes have hostnames formatted as "worker.1", "worker.2", "sidekiq.1", etc...
-        # group processes by type, then sort by number, and quiet beyond scale.
-        sidekiq_processes.group_by { |p| p['hostname'].split('.').first }.each do |group|
-          # assuming setup validations were observed, there should only ever be a single group here.
-          group.sort_by { |p| p['hostname'].split('.').second.to_i }.each_with_index do |process, index|
-            if index + 1 > scale
+        # this groups processes by type, then sorts by number, and then quiets beyond scale.
+        sidekiq_processes.group_by { |p| p['hostname'].split('.').first }.each_pair do |type, group|
+          # there should only ever be a single group here (assuming setup validations were observed)
+          group.sort_by { |p| p['hostname'].split('.').last.to_i }.each_with_index do |process, index|
+            if index + 1 > scale && !process.stopping?
               process.quiet!
               quieted = true
             end
@@ -95,29 +92,18 @@ module Sidekiq
         quieted
       end
 
-    private
-
       def sidekiq_queues
         ::Sidekiq::Stats.new.queues
       end
 
       def sidekiq_processes
-        # Process => {
-        #   'hostname' => 'app-1.example.com',
-        #   'started_at' => <process start time>,
-        #   'pid' => 12345,
-        #   'tag' => 'myapp'
-        #   'concurrency' => 25,
-        #   'queues' => ['default', 'low'],
-        #   'busy' => 10,
-        #   'beat' => <last heartbeat>,
-        #   'identity' => <unique string identifying the process>,
-        # }
         process_set = ::Sidekiq::ProcessSet.new
         # select all processes with queues that intersect watched queues
         process_set = process_set.select { |p| (p['queues'] & @watch_queues).any? } unless all_queues?
         process_set
       end
+
+    private
 
       def count_jobs(job_set)
         return job_set.size if all_queues?

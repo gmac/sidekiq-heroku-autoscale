@@ -66,12 +66,13 @@ You can pass a scaling strategy object instead of the timeout to the server midd
 
 ## Tests
 
-The project is setup to run RSpec with Guard.  It expects a redis instance on a custom port, which is started by the Guardfile.
+```bash
+# Start a redis server
+redis-server test/redis_test.conf
 
-The HerokuPlatformScaler is not tested by default because it makes live API requests.  Specify `AUTOSCALER_HEROKU_APP` and `AUTOSCALER_HEROKU_ACCESS_TOKEN` on the command line, and then watch your app's logs.
-
-    AUTOSCALER_HEROKU_APP=... AUTOSCALER_HEROKU_ACCESS_TOKEN=... guard
-    heroku logs --app ...
+# Then in another terminal window,
+bundle exec rake test
+```
 
 ## Authors
 

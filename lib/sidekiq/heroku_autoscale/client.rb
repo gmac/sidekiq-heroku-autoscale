@@ -1,4 +1,4 @@
-require_relative 'throttle'
+require_relative 'poll_interval'
 
 module Sidekiq
   module HerokuAutoscale

@@ -29,12 +29,6 @@ describe 'Sidekiq::HerokuAutoscale::ScaleStrategy' do
       assert_equal 2, subject.binary(@sys)
     end
 
-    it 'scale_caps_at_actual_work' do
-      @sys.total_work = 1
-      subject = @subject.new(max_workers: 2)
-      assert_equal 1, subject.binary(@sys)
-    end
-
     it 'deactivates_when_no_work' do
       @sys.total_work = 0
       subject = @subject.new(max_workers: 1)

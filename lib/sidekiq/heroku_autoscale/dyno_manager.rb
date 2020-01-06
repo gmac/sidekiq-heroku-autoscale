@@ -1,7 +1,6 @@
 require 'platform-api'
 require_relative 'queue_system'
 require_relative 'scale_strategy'
-require_relative 'scale_transition'
 
 module Sidekiq
   module HerokuAutoscale
