@@ -13,8 +13,8 @@ processes:
       mode: binary
       max_workers: 2
     throttle: 15
-    quiet_buffer: 10
-    minimum_uptime: 10
+    quiet_buffer: 15
+    minimum_uptime: 15
 
   second:
     system:
@@ -28,5 +28,5 @@ processes:
       worker_capacity: 50
       min_factor: 1
     throttle: 20
-    quiet_buffer: 10
-    minimum_uptime: 10
+    quiet_buffer: 20
+    minimum_uptime: 20

@@ -7,6 +7,7 @@ module Sidekiq
     # Performs scale-up when items are queued and there are no workers running
     class Server
       @mutex = Mutex.new
+      @monitor = nil
 
       def self.monitor
         return @monitor if @monitor

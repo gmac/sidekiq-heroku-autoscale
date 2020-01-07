@@ -10,9 +10,9 @@ Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736'
 class TestQueueSystem
   attr_accessor :total_work, :dynos
 
-  def initialize
-    @total_work = 0
-    @dynos = 0
+  def initialize(total_work: 0, dynos: 0)
+    @total_work = total_work
+    @dynos = dynos
   end
 
   def has_work?

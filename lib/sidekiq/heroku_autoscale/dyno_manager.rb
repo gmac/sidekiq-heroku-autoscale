@@ -29,9 +29,10 @@ module Sidekiq
       end
 
       attr_reader :client, :app_name, :process_name
-      attr_reader :queue_system, :scale_strategy
 
-      attr_accessor :throttle, :last_update, :quiet_buffer, :minimum_uptime
+      attr_accessor :throttle, :quiet_buffer, :minimum_uptime
+      attr_accessor :last_update, :quieted_at, :startup_at
+      attr_accessor :queue_system, :scale_strategy
 
       # @param [String] process_name process process_name this scaler controls
       # @param [String] token Heroku OAuth access token
@@ -55,12 +56,12 @@ module Sidekiq
         @throttle = throttle
         @last_update = nil
 
+        @quieted_to = nil
+        @quieted_at = nil
+        @quiet_buffer = quiet_buffer
+
         @startup_at = nil
         @minimum_uptime = minimum_uptime
-
-        @quietdown_to = nil
-        @quietdown_at = nil
-        @quiet_buffer = quiet_buffer
       end
 
       # check if a probe time is newer than the last update
@@ -70,27 +71,12 @@ module Sidekiq
 
       # check if last update falls within the throttle window
       def throttled?
-        @last_update && Time.now.utc - @last_update <= @throttle
-      end
-
-      # checks if the system is downscaling
-      # no other scaling is allowed during a cooling period
-      def quieting?
-        !!@quietdown_to
-      end
-
-      def fulfills_quietdown?
-        quieting? && @quietdown_at && Time.now.utc >= @quietdown_at + @quiet_buffer
-      end
-
-      # checks if minimum observation uptime has been fulfilled
-      def fulfills_uptime?
-        @startup_at && Time.now.utc >= @startup_at + @minimum_uptime
+        @last_update && Time.now.utc < @last_update + @throttle
       end
 
       # caches last-update timestamp so it may propagate across processes
-      def touch(timestamp=nil)
-        @last_update = timestamp || Time.now.utc
+      def touch(at=Time.now.utc)
+        @last_update = at
         ::Sidekiq.redis { |c| c.setex(cache_key(:touch), @throttle, @last_update.to_s) }
       end
 
@@ -107,8 +93,56 @@ module Sidekiq
         false
       end
 
+      # checks if the system is downscaling
+      # no other scaling is allowed during a cooling period
+      def quieting?
+        @quieted_to && @quieted_at
+      end
+
+      def fulfills_quietdown?
+        @quieted_at && Time.now.utc >= @quieted_at + @quiet_buffer
+      end
+
+      # checks if minimum observation uptime has been fulfilled
+      def fulfills_uptime?
+        @startup_at && Time.now.utc >= @startup_at + @minimum_uptime
+      end
+
+      # starts a quietdown period in which excess workers are quieted
+      # no formations changes are allowed during a quiet window.
+      # once the quiet buffer has expired, scaling occurs and new targets may be set.
+      def quietdown(to=0)
+        @quieted_to = [0, to].max
+        @quieted_at = Time.now.utc
+        @startup_at ||= @quieted_at
+        unless queue_system.quietdown!(@quieted_to)
+          # omit quiet buffer if no workers were actually quieted
+          # allows direct downscaling without buffer delay
+          # (though uptime buffer may still have an effect)
+          @quieted_at -= (@quiet_buffer + 1)
+        end
+        ::Sidekiq.redis { |c| c.set(cache_key(:quietdown), [@quieted_to, @quieted_at.to_s]) }
+      end
+
+      # purges quietdown configuration
+      def stop_quietdown
+        @quieted_to = @quieted_at = nil
+        ::Sidekiq.redis { |c| c.del(cache_key(:quietdown)) }
+      end
+
+      # syncs quietdown configuration across processes
+      def sync_quietdown
+        if quietdown = ::Sidekiq.redis { |c| c.get(cache_key(:quietdown)) }
+          @quieted_to = quietdown[0]
+          @quieted_at = Time.parse(quietdown[1])
+          @startup_at ||= @quieted_at
+          return true
+        end
+        false
+      end
+
       # wrapper for throttling the upscale process (client)
-      # polling runs until the next update! has been called.
+      # polling runs until the next update has been called.
       def wait_for_update!(request_time=nil)
         return true if updated_since?(request_time)
         return false if throttled?
@@ -118,7 +152,7 @@ module Sidekiq
       end
 
       # wrapper for polling the downscale process (server)
-      # polling runs until an update! returns zero dynos.
+      # polling runs until an update returns zero dynos.
       def wait_for_shutdown!(request_time=nil)
         return false if updated_since?(request_time)
         return false if throttled?
@@ -127,44 +161,51 @@ module Sidekiq
         count.zero? && fulfills_uptime?
       end
 
-      def update!
+      def update!(current=nil, target=nil)
         touch
-        target = scale_strategy.call(queue_system)
-        current = get_dyno_count
+        current ||= get_dyno_count
 
         # set startup time when unset yet scaled
         # (probably an initial update)
-        if !@startup_at && current > 0
-          @startup_at = Time.now.utc
-        end
+        @startup_at ||= Time.now.utc if current > 0
 
-        # idle
-        if current == target || quieting?
-          return current
+        # sync cached quietdown settings from other processes,
+        # then break potential gridlock of quieting + nothing running
+        sync_quietdown
+        stop_quietdown if current.zero? && quieting?
 
-        # upscale
-        elsif current < target
-          @startup_at ||= Time.now.utc
-          set_dyno_count(target)
-          return target
+        # No changes are allowed while quieting...
+        # the quieted dyno needs to be removed (downscaled)
+        # before making other changes to the formation.
+        unless quieting?
+          # select a new scale target to shoot for
+          # (provides a trajectory, not necessarily a destination)
+          target ||= scale_strategy.call(queue_system)
 
-        # quietdown
-        elsif current > target
-          @quietdown_to = [0, current - 1].max
-          @quietdown_at = Time.now.utc
-          unless sys.quietdown!(@quietdown_to)
-            # omit quiet buffer if no workers were quieted
-            # allows the program to directly downscale.
-            @quietdown_at -= @quiet_buffer
+          # idle
+          if current == target
+            return current
+
+          # upscale
+          elsif current < target
+            @startup_at ||= Time.now.utc
+            set_dyno_count(target)
+            return target
+
+          # quietdown
+          elsif current > target
+            quietdown(current - 1)
+            # do not return...
+            # allows downscale conditions to be checked
+            # during the same update cycle
           end
         end
 
         # downscale
-        if fulfills_uptime? && fulfills_quietdown?
-          count = @quietdown_to
+        if quieting? && fulfills_quietdown? && fulfills_uptime?
+          count = @quieted_to
           set_dyno_count(count)
-          @quietdown_to = nil
-          @quietdown_at = nil
+          stop_quietdown
           return count
         end
 

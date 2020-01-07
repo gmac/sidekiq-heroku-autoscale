@@ -64,14 +64,14 @@ module Sidekiq
         !has_work?
       end
 
-      def all_quiet?
-        memoized = sidekiq_processes
-        memoized.size > 0 && memoized.all?(&:stopping?)
-      end
+      # def all_quiet?
+      #   memoized = sidekiq_processes
+      #   memoized.size > 0 && memoized.all?(&:stopping?)
+      # end
 
-      def any_quiet?
-        sidekiq_processes.any?(&:stopping?)
-      end
+      # def any_quiet?
+      #   sidekiq_processes.any?(&:stopping?)
+      # end
 
       # When scaling down workers, heroku stops the one with the highest number...
       # from https://stackoverflow.com/questions/25215334/scale-down-specific-heroku-worker-dynos

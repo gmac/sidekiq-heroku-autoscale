@@ -23,6 +23,8 @@ describe 'DynoManager.build_from_config' do
     assert_equal 'binary', first.scale_strategy.mode
     assert_equal 2, first.scale_strategy.max_workers
     assert_equal 15, first.throttle
+    assert_equal 15, first.quiet_buffer
+    assert_equal 15, first.minimum_uptime
 
     second = managers_by_queue['high']
     assert_equal 'test-app', second.app_name
@@ -33,6 +35,8 @@ describe 'DynoManager.build_from_config' do
     assert_equal 50, second.scale_strategy.worker_capacity
     assert_equal 1, second.scale_strategy.min_factor
     assert_equal 20, second.throttle
+    assert_equal 20, second.quiet_buffer
+    assert_equal 20, second.minimum_uptime
   end
 
   it 'fills in name/token with environment variables' do

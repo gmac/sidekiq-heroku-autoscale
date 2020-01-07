@@ -7,6 +7,7 @@ module Sidekiq
     # Performs scale-up when items are queued and there are no workers running
     class Client
       @mutex = Mutex.new
+      @throttle = nil
 
       def self.throttle
         return @throttle if @throttle

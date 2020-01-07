@@ -199,105 +199,127 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     end
   end
 
-  describe 'all_quiet?' do
-    it 'returns false for all queues without processes' do
-      subject = @subject.new(watch_queues: '*')
-      assert_not subject.all_quiet?
-    end
+  # describe 'all_quiet?' do
+  #   it 'returns false for all queues without processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns false for all queues with all active processes' do
-      subject = @subject.new(watch_queues: '*')
-      process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
-      assert_not subject.all_quiet?
-    end
+  #   it 'returns false for all queues with all active processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns false for all queues with with some quiet processes' do
-      subject = @subject.new(watch_queues: '*')
-      process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
-      assert_not subject.all_quiet?
-    end
+  #   it 'returns false for all queues with with some quiet processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns true for all queues with all quiet processes' do
-      subject = @subject.new(watch_queues: '*')
-      process_workers('quiet.1' => %w[default], 'quiet.2' => %w[low])
-      assert subject.all_quiet?
-    end
+  #   it 'returns true for all queues with all quiet processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     process_workers('quiet.1' => %w[default], 'quiet.2' => %w[low])
+  #     assert subject.all_quiet?
+  #   end
 
-    it 'returns false for select queues without processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      assert_not subject.all_quiet?
-    end
+  #   it 'returns false for select queues without processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns false for select queues with all active processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
-      assert_not subject.all_quiet?
-    end
+  #   it 'returns false for select queues with all active processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns false for select queues with with some quiet processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
-      assert_not subject.all_quiet?
-    end
+  #   it 'returns false for select queues with with some quiet processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
+  #     assert_not subject.all_quiet?
+  #   end
 
-    it 'returns true for select queues with all quiet processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.1' => %w[high], 'quiet.1' => %w[default], 'quiet.2' => %w[low])
-      assert subject.all_quiet?
-    end
-  end
+  #   it 'returns true for select queues with all quiet processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     process_workers('worker.1' => %w[high], 'quiet.1' => %w[default], 'quiet.2' => %w[low])
+  #     assert subject.all_quiet?
+  #   end
+  # end
 
-  describe 'any_quiet?' do
-    it 'returns false for all queues without processes' do
-      subject = @subject.new(watch_queues: '*')
-      assert_not subject.any_quiet?
-    end
+  # describe 'any_quiet?' do
+  #   it 'returns false for all queues without processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     assert_not subject.any_quiet?
+  #   end
 
-    it 'returns false for all queues with all active processes' do
-      subject = @subject.new(watch_queues: '*')
-      process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
-      assert_not subject.any_quiet?
-    end
+  #   it 'returns false for all queues with all active processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     process_workers('worker.1' => %w[default], 'worker.2' => %w[low])
+  #     assert_not subject.any_quiet?
+  #   end
 
-    it 'returns true for all queues with with some quiet processes' do
-      subject = @subject.new(watch_queues: '*')
-      process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
-      assert subject.any_quiet?
-    end
+  #   it 'returns true for all queues with with some quiet processes' do
+  #     subject = @subject.new(watch_queues: '*')
+  #     process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
+  #     assert subject.any_quiet?
+  #   end
 
-    it 'returns false for select queues without processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      assert_not subject.any_quiet?
-    end
+  #   it 'returns false for select queues without processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     assert_not subject.any_quiet?
+  #   end
 
-    it 'returns false for select queues with all active processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.1' => %w[default], 'worker.2' => %w[low], 'quiet.1' => %w[high])
-      assert_not subject.any_quiet?
-    end
+  #   it 'returns false for select queues with all active processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     process_workers('worker.1' => %w[default], 'worker.2' => %w[low], 'quiet.1' => %w[high])
+  #     assert_not subject.any_quiet?
+  #   end
 
-    it 'returns true for select queues with with some quiet processes' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
-      assert subject.any_quiet?
-    end
-  end
+  #   it 'returns true for select queues with with some quiet processes' do
+  #     subject = @subject.new(watch_queues: %w[default low])
+  #     process_workers('worker.1' => %w[default], 'quiet.1' => %w[low])
+  #     assert subject.any_quiet?
+  #   end
+  # end
 
   describe 'quietdown!' do
-    it 'sends quiet signals to numbered processes above a threshold' do
-      subject = @subject.new(watch_queues: %w[default low])
-      process_workers('worker.3' => %w[low], 'worker.1' => %w[default], 'worker.2' => %w[default])
-      quietable_stubs(subject)
+    it 'has no effect when quieting above current process count' do
+      subject = @subject.new(watch_queues: '*')
+      process_workers('worker.1' => %w[default])
+      stub_quietable_processes(subject)
 
-      assert subject.quietdown!(1) # downscaled
+      assert_not subject.quietdown!(2)
+      assert_not subject.sidekiq_processes.find(&:stopping?)
+    end
+
+    it 'has no effect when quieting at current process count' do
+      subject = @subject.new(watch_queues: '*')
+      process_workers('worker.1' => %w[default])
+      stub_quietable_processes(subject)
+
+      assert_not subject.quietdown!(1)
+      assert_not subject.sidekiq_processes.find(&:stopping?)
+    end
+
+    it 'quiets a single process down to zero' do
+      subject = @subject.new(watch_queues: '*')
+      process_workers('worker.1' => %w[default])
+      stub_quietable_processes(subject)
+
+      assert subject.quietdown!(0)
+      assert subject.sidekiq_processes.find(&:stopping?)
+    end
+
+    it 'quiets multiple processes above a threshold' do
+      subject = @subject.new(watch_queues: '*')
+      process_workers('worker.3' => %w[low], 'worker.1' => %w[low], 'worker.2' => %w[low])
+      stub_quietable_processes(subject)
+
+      assert subject.quietdown!(1)
       assert_not subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
       assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.2' }.stopping?
       assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.3' }.stopping?
-      assert_not subject.quietdown!(1) # no change
-
-      assert subject.quietdown!(0) # downscaled
-      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
-      assert_not subject.quietdown!(0) # no change
     end
   end
 
@@ -339,7 +361,7 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     end
   end
 
-  def quietable_stubs(subject)
+  def stub_quietable_processes(subject)
     # map all process objects with self-flagging quiet! stubs
     stubbed = subject.sidekiq_processes.map do |p|
       def p.quiet!; @attribs['quiet'] = 'true'; end
