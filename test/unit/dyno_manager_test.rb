@@ -1,12 +1,11 @@
 require 'test_helper'
 
 describe 'Sidekiq::HerokuAutoscale::DynoManager' do
+  ENV_CONFIG = { api_token: 'b33skn33s', app_name: 'test-this' }
+
   before do
     Sidekiq.redis {|c| c.flushdb }
-    @subject = ::Sidekiq::HerokuAutoscale::DynoManager.new({
-      api_token: 'b33skn33s',
-      app_name: 'test-this',
-    })
+    @subject = ::Sidekiq::HerokuAutoscale::DynoManager.new(ENV_CONFIG)
   end
 
   describe 'throttled?' do
@@ -119,17 +118,17 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
 
   describe 'fulfills_quietdown?' do
     it 'returns false without a quietdown time' do
-      @subject.quietdown_at = nil
+      @subject.quieted_at = nil
       assert_not @subject.fulfills_quietdown?
     end
 
     it 'checks if last quietdown exceeds the buffer' do
       @subject.quiet_buffer = 10
 
-      @subject.quietdown_at = Time.now.utc - 9
+      @subject.quieted_at = Time.now.utc - 9
       assert_not @subject.fulfills_quietdown?
 
-      @subject.quietdown_at = Time.now.utc - 11
+      @subject.quieted_at = Time.now.utc - 11
       assert @subject.fulfills_quietdown?
     end
   end
@@ -148,6 +147,70 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
 
       @subject.startup_at = Time.now.utc - 11
       assert @subject.fulfills_uptime?
+    end
+  end
+
+  describe 'quietdown' do
+    it 'assigns a downscale target' do
+      @subject.quietdown(1)
+      assert_equal 1, @subject.quieted_to
+      assert @subject.quieted_at
+      assert @subject.startup_at
+    end
+
+    it 'caches quietdown configuration' do
+      @subject.quietdown(1)
+      cached_value = ::Sidekiq.redis { |c| c.get(@subject.send(:cache_key, :quietdown)) }
+      assert_equal [1, @subject.quieted_at.to_s], JSON.parse(cached_value)
+    end
+
+    it 'enables quietdown buffer after quieting workers' do
+      @subject.queue_system.stub(:quietdown!, true) do
+        @subject.quietdown(0)
+        assert_not @subject.fulfills_quietdown?
+      end
+    end
+
+    it 'skips quietdown buffer when there was nothing to quiet' do
+      @subject.queue_system.stub(:quietdown!, false) do
+        @subject.quietdown(0)
+        assert @subject.fulfills_quietdown?
+      end
+    end
+
+    it 'does not scale below zero' do
+      @subject.quietdown(-1)
+      assert_equal 0, @subject.quieted_to
+    end
+  end
+
+  describe 'stop_quietdown' do
+    it 'clears quietdown configuration' do
+      @subject.quietdown(1)
+      assert @subject.quieted_to
+      assert @subject.quieted_at
+
+      @subject.stop_quietdown
+      assert_not @subject.quieted_to
+      assert_not @subject.quieted_at
+      assert_not ::Sidekiq.redis { |c| c.exists(@subject.send(:cache_key, :quietdown)) }
+    end
+  end
+
+  describe 'sync_quietdown' do
+    before do
+      @subject2 = ::Sidekiq::HerokuAutoscale::DynoManager.new(ENV_CONFIG)
+    end
+
+    it 'syncs configuration between instances' do
+      @subject.quietdown(1)
+      assert @subject.quieting?
+      assert_not @subject2.quieting?
+
+      @subject2.sync_quietdown
+      assert @subject2.quieting?
+      assert_equal @subject.quieted_to, @subject2.quieted_to
+      assert_equal @subject.quieted_at.to_i, @subject2.quieted_at.to_i
     end
   end
 

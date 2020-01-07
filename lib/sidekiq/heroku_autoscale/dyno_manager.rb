@@ -28,7 +28,7 @@ module Sidekiq
         end
       end
 
-      attr_reader :client, :app_name, :process_name
+      attr_reader :client, :app_name, :process_name, :quieted_to
 
       attr_accessor :throttle, :quiet_buffer, :minimum_uptime
       attr_accessor :last_update, :quieted_at, :startup_at
@@ -109,8 +109,7 @@ module Sidekiq
       end
 
       # starts a quietdown period in which excess workers are quieted
-      # no formations changes are allowed during a quiet window.
-      # once the quiet buffer has expired, scaling occurs and new targets may be set.
+      # no formation changes are allowed during a quietdown window.
       def quietdown(to=0)
         @quieted_to = [0, to].max
         @quieted_at = Time.now.utc
@@ -133,6 +132,7 @@ module Sidekiq
       # syncs quietdown configuration across processes
       def sync_quietdown
         if quietdown = ::Sidekiq.redis { |c| c.get(cache_key(:quietdown)) }
+          quietdown = JSON.parse(quietdown)
           @quieted_to = quietdown[0]
           @quieted_at = Time.parse(quietdown[1])
           @startup_at ||= @quieted_at
