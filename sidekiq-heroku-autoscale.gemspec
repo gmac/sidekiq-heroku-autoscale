@@ -3,7 +3,6 @@ lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 $:.push(lib)
 
-
 Gem::Specification.new do |s|
   s.name        = 'sidekiq-heroku-autoscale'.freeze
   s.version     = '0.0.0'
@@ -13,8 +12,8 @@ Gem::Specification.new do |s|
   s.files                 = Dir['README.md', 'lib/**/*']
 
   s.authors     = ['Greg MacWilliam', 'Justin Love']
-  s.summary     = 'Start/stop Sidekiq workers on Heroku'
-  s.description = 'Currently provides a Sidekiq middleware that does 0/1 scaling of Heroku processes'
+  s.summary     = 'Start, stop, and scale Sidekiq workers on Heroku based on workload.'
+  s.description = 'Reduce Heroku costs by scaling down Sidekiq workers when idle.'
   s.homepage    = 'https://github.com/gmac/sidekiq-heroku-autoscale'
   s.licenses    = ['MIT']
 
