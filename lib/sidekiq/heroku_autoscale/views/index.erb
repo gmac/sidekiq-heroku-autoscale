@@ -1,1 +1,15 @@
-Hello World
+<div class= "dashboard clearfix">
+  <h3>Dynos
+    <span class="beacon">
+      <span class="ring"></span>
+      <span class="dot"></span>
+    </span>
+  </h3>
+</div>
+
+<div class="row chart">
+  <div id="realtime" data-update-url="<%= root_path %>dynos/stats"></div>
+  <div id="realtime-legend"></div>
+</div>
+
+<script type="text/javascript" src="<%= root_path %>dynos/dashboard.js"></script>
