@@ -8,8 +8,8 @@
 </div>
 
 <div class="row chart">
-  <div id="realtime" data-update-url="<%= root_path %>dynos/stats"></div>
+  <div id="realtime" data-process-names="worker,sidekiq" data-update-url="<%= root_path %>dynos/stats"></div>
   <div id="realtime-legend"></div>
 </div>
 
-<script type="text/javascript" src="<%= root_path %>dynos/dashboard.js"></script>
+<script type="text/javascript" src="<%= root_path %>dynos/dashboard.js?v=4"></script>

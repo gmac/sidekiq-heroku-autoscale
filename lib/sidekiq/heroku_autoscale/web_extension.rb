@@ -27,9 +27,9 @@ module Sidekiq
         app.get '/dynos/stats' do
           sidekiq_stats = ::Sidekiq::Stats.new
           json(
-            scale: {
-              default: 0,
-              low: 0,
+            dynos: {
+              worker: rand(0..3),
+              sidekiq: rand(0..3),
             },
             sidekiq: {
               processed: sidekiq_stats.processed,
