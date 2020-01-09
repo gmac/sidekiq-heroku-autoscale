@@ -1,9 +1,9 @@
 PATH
   remote: .
   specs:
-    sidekiq_heroku_autoscale (0.0.0)
+    sidekiq-heroku-autoscale (0.0.0)
       platform-api (~> 2.0)
-      sidekiq (~> 5.0)
+      sidekiq (>= 5.0)
 
 GEM
   remote: http://rubygems.org/
@@ -40,7 +40,7 @@ DEPENDENCIES
   bundler (~> 2.0)
   minitest (~> 5.12)
   rake (~> 12.0)
-  sidekiq_heroku_autoscale!
+  sidekiq-heroku-autoscale!
 
 BUNDLED WITH
    2.1.2

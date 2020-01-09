@@ -3,7 +3,7 @@ Bundler.require(:default, :test)
 
 require 'minitest/pride'
 require 'minitest/autorun'
-require 'sidekiq_heroku_autoscale'
+require 'sidekiq-heroku-autoscale'
 
 Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736')
 
@@ -30,6 +30,10 @@ end
 
 def assert_not_equal(exp, val)
   assert exp != val
+end
+
+def assert_equal_times(a, b)
+  assert_equal a.to_i, b.to_i
 end
 
 def assert_raises_message(klass, pattern, &block)

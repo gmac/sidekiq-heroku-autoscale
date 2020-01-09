@@ -17,19 +17,19 @@ describe 'Sidekiq::HerokuAutoscale::ScaleStrategy' do
   end
 
   describe 'binary' do
-    it 'activates_when_work_present' do
+    it 'activates when work is present' do
       @sys.total_work = 1
       subject = @subject.new(max_workers: 1)
       assert_equal 1, subject.binary(@sys)
     end
 
-    it 'scales_to_maximum_workers' do
+    it 'scales to maximum workers' do
       @sys.total_work = 10
       subject = @subject.new(max_workers: 2)
       assert_equal 2, subject.binary(@sys)
     end
 
-    it 'deactivates_when_no_work' do
+    it 'deactivates when no work is present' do
       @sys.total_work = 0
       subject = @subject.new(max_workers: 1)
       assert_equal 0, subject.binary(@sys)
@@ -97,20 +97,20 @@ describe 'Sidekiq::HerokuAutoscale::ScaleStrategy' do
       assert_equal 5, subject.linear(@sys)
     end
 
-    it 'does_not_downscale_engaged_workers' do
+    it 'does not downscale engaged workers' do
       @sys.dynos = 2
       subject = @subject.new(max_workers: 5, worker_capacity: 4)
       assert_equal 2, subject.linear(@sys)
     end
 
-    it 'does_not_scale_above_max_workers' do
+    it 'does not scale above max workers' do
       @sys.total_work = 40
       @sys.dynos = 6
       subject = @subject.new(max_workers: 5, worker_capacity: 4)
       assert_equal 5, subject.linear(@sys)
     end
 
-    it 'returns_zero_for_zero_capacity' do
+    it 'returns zero for zero capacity' do
       @sys.total_work = 0
       @sys.dynos = 0
       subject = @subject.new(max_workers: 0, worker_capacity: 0)

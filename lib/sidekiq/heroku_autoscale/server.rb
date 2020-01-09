@@ -1,5 +1,3 @@
-require_relative 'poll_interval'
-
 module Sidekiq
   module HerokuAutoscale
 
@@ -15,14 +13,14 @@ module Sidekiq
         @monitor
       end
 
-      def initialize(queue_managers)
-        @queue_managers = queue_managers
+      def initialize(formation)
+        @formation = formation
       end
 
       def call(worker_class, item, queue, _=nil)
         yield
       ensure
-        self.class.monitor.update(@queue_managers[queue] || @queue_managers['*'])
+        self.class.monitor.update(@formation.process_for_queue(queue))
       end
     end
 

@@ -1,11 +1,12 @@
 require 'test_helper'
 
-describe 'Sidekiq::HerokuAutoscale::DynoManager' do
+describe 'Sidekiq::HerokuAutoscale::ProcessManager' do
   ENV_CONFIG = { api_token: 'b33skn33s', app_name: 'test-this' }
 
   before do
     Sidekiq.redis {|c| c.flushdb }
-    @subject = ::Sidekiq::HerokuAutoscale::DynoManager.new(ENV_CONFIG)
+    @subject = ::Sidekiq::HerokuAutoscale::ProcessManager.new(ENV_CONFIG)
+    @subject2 = ::Sidekiq::HerokuAutoscale::ProcessManager.new(ENV_CONFIG)
   end
 
   describe 'throttled?' do
@@ -54,40 +55,40 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
     it 'sets updated time and caches to redis' do
       timestamp = Time.now.utc - 5
       @subject.touch(timestamp)
-      assert_equal timestamp.to_s, @subject.last_update.to_s
-      assert_equal timestamp.to_s, ::Sidekiq.redis { |c| c.get(@subject.send(:cache_key, :touch)) }
+      assert_equal_times timestamp, @subject.last_update
+      assert_equal_times timestamp, Time.parse(::Sidekiq.redis { |c| c.get(@subject.send(:cache_key, :touch)) }).utc
     end
   end
 
-  describe 'sync_touch!' do
+  describe 'sync_touch' do
     it 'does not sync from an empty cache' do
       @subject.last_update = nil
-      assert_not @subject.sync_touch!
+      assert_not @subject.sync_touch
       assert @subject.last_update.nil?
     end
 
     it 'does not sync a cached value older than local' do
       timestamp = Time.now.utc
-      @subject.touch(timestamp - 1)
+      @subject2.touch(timestamp - 1)
       @subject.last_update = timestamp
-      assert_not @subject.sync_touch!
-      assert_equal timestamp.to_s, @subject.last_update.to_s
+      assert_not @subject.sync_touch
+      assert_equal_times timestamp, @subject.last_update
     end
 
     it 'syncs a cached value newer than local' do
       timestamp = Time.now.utc
-      @subject.touch(timestamp)
+      @subject2.touch(timestamp)
       @subject.last_update = timestamp - 1
-      assert @subject.sync_touch!
-      assert_equal timestamp.to_s, @subject.last_update.to_s
+      assert @subject.sync_touch
+      assert_equal_times timestamp, @subject.last_update
     end
 
     it 'syncs any cached value when locally unset' do
       timestamp = Time.now.utc
-      @subject.touch(timestamp)
+      @subject2.touch(timestamp)
       @subject.last_update = nil
-      assert @subject.sync_touch!
-      assert_equal timestamp.to_s, @subject.last_update.to_s
+      assert @subject.sync_touch
+      assert_equal_times timestamp, @subject.last_update
     end
   end
 
@@ -184,6 +185,14 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
     end
   end
 
+  describe 'quieting?' do
+    it 'returns true while quietdown configuration is present' do
+      assert_not @subject.quieting?
+      @subject.quietdown(1)
+      assert @subject.quieting?
+    end
+  end
+
   describe 'stop_quietdown' do
     it 'clears quietdown configuration' do
       @subject.quietdown(1)
@@ -198,10 +207,6 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
   end
 
   describe 'sync_quietdown' do
-    before do
-      @subject2 = ::Sidekiq::HerokuAutoscale::DynoManager.new(ENV_CONFIG)
-    end
-
     it 'syncs configuration between instances' do
       @subject.quietdown(1)
       assert @subject.quieting?
@@ -210,7 +215,88 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
       @subject2.sync_quietdown
       assert @subject2.quieting?
       assert_equal @subject.quieted_to, @subject2.quieted_to
-      assert_equal @subject.quieted_at.to_i, @subject2.quieted_at.to_i
+      assert_equal_times @subject.quieted_at, @subject2.quieted_at
+    end
+  end
+
+  describe 'wait_for_update!' do
+    it 'returns true when updated since the probe' do
+      @subject.last_update = Time.now.utc - 10
+      assert @subject.wait_for_update!(@subject.last_update - 1)
+    end
+
+    it 'returns false when throttled' do
+      @subject.throttle = 10
+      @subject.last_update = Time.now.utc - 9
+      assert_not @subject.wait_for_update!(@subject.last_update + 1)
+    end
+
+    it 'returns false when a syncronized update is throttled' do
+      @subject.throttle = 10
+      @subject.last_update = Time.now.utc - 15
+      @subject2.touch(Time.now.utc - 9)
+      assert_not @subject.wait_for_update!(@subject.last_update + 1)
+      assert_equal_times @subject.last_update, @subject2.last_update
+    end
+
+    it 'returns true when updated' do
+      mock = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock) do
+        @subject.throttle = 10
+        @subject.last_update = Time.now.utc - 11
+        assert @subject.wait_for_update!(@subject.last_update + 1)
+      end
+      mock.verify
+    end
+  end
+
+  describe 'wait_for_shutdown!' do
+    it 'returns false when throttled' do
+      @subject.throttle = 10
+      @subject.last_update = Time.now.utc - 9
+      assert_not @subject.wait_for_shutdown!
+    end
+
+    it 'returns false when a syncronized update is throttled' do
+      @subject.throttle = 10
+      @subject.last_update = Time.now.utc - 15
+      @subject2.touch(Time.now.utc - 9)
+      assert_not @subject.wait_for_shutdown!
+      assert_equal_times @subject.last_update, @subject2.last_update
+    end
+
+    it 'returns false when update returns dynos' do
+      mock = MiniTest::Mock.new.expect(:call, 1)
+      @subject.stub(:update!, mock) do
+        @subject.throttle = 10
+        @subject.last_update = Time.now.utc - 11
+        assert_not @subject.wait_for_shutdown!
+      end
+      mock.verify
+    end
+
+    it 'returns false when update returns no dynos, but uptime has not been met' do
+      mock = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock) do
+        @subject.throttle = 10
+        @subject.last_update = Time.now.utc - 11
+        @subject.minimum_uptime = 10
+        @subject.startup_at = Time.now.utc - 9
+        assert_not @subject.wait_for_shutdown!
+      end
+      mock.verify
+    end
+
+    it 'returns true when update returns no dynos and uptime has been met' do
+      mock = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock) do
+        @subject.throttle = 10
+        @subject.last_update = Time.now.utc - 11
+        @subject.minimum_uptime = 10
+        @subject.startup_at = Time.now.utc - 11
+        assert @subject.wait_for_shutdown!
+      end
+      mock.verify
     end
   end
 
@@ -234,7 +320,7 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
       timestamp = Time.now.utc - 10
       @subject.startup_at = timestamp
       @subject.update!(1, 1)
-      assert_equal timestamp.to_s, @subject.startup_at.to_s
+      assert_equal_times timestamp, @subject.startup_at
     end
 
     it 'returns current dynos while idle' do
@@ -255,7 +341,7 @@ describe 'Sidekiq::HerokuAutoscale::DynoManager' do
       timestamp = Time.now.utc - 10
       @subject.startup_at = timestamp
       @subject.update!(1, 2)
-      assert_equal timestamp.to_s, @subject.startup_at.to_s
+      assert_equal_times timestamp, @subject.startup_at
     end
   end
 

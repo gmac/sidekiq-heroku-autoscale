@@ -1,46 +1,54 @@
-require_relative 'heroku_autoscale/dyno_manager'
-require_relative 'heroku_autoscale/client'
-require_relative 'heroku_autoscale/server'
+require 'sidekiq/heroku_autoscale/client'
+require 'sidekiq/heroku_autoscale/formation_manager'
+require 'sidekiq/heroku_autoscale/poll_interval'
+require 'sidekiq/heroku_autoscale/process_manager'
+require 'sidekiq/heroku_autoscale/queue_system'
+require 'sidekiq/heroku_autoscale/scale_strategy'
+require 'sidekiq/heroku_autoscale/server'
 
 module Sidekiq
   module HerokuAutoscale
 
-    def self.setup(options)
-      options = options.transform_keys(&:to_sym)
-      queue_managers = DynoManager.build_from_config(options)
+    class << self
+      def init(options)
+        options = options.transform_keys(&:to_sym)
+        formation = FormationManager.build_from_config(options)
 
-      # configure sidekiq queue server
-      Sidekiq.configure_server do |config|
-        config.on(:startup) do
-          dyno_name = ENV['DYNO']
-          next unless dyno_name
+        # configure sidekiq queue server
+        Sidekiq.configure_server do |config|
+          config.on(:startup) do
+            dyno_name = ENV['DYNO']
+            next unless dyno_name
 
-          manager = queue_managers.values.detect { |m| m.process_name == dyno_name.split('.').first }
-          next unless manager
+            process = formation.process_by_name(dyno_name.split('.').first)
+            next unless process
 
-          Server.monitor.update(manager)
+            Server.monitor.update(process)
+          end
+
+          config.server_middleware do |chain|
+            chain.add(Server, formation)
+          end
+
+          # for jobs that queue other jobs...
+          config.client_middleware do |chain|
+            chain.add(Client, formation)
+          end
         end
 
-        config.server_middleware do |chain|
-          chain.add(Server, queue_managers)
+        # configure sidekiq app client
+        Sidekiq.configure_client do |config|
+          config.on(:startup) do
+            next unless options[:sidekiq_autostart]
+            formation.values.each { |m| Client.throttle.update(m) }
+          end
+
+          config.client_middleware do |chain|
+            chain.add(Client, formation)
+          end
         end
 
-        # for jobs that queue other jobs...
-        config.client_middleware do |chain|
-          chain.add(Client, queue_managers)
-        end
-      end
-
-      # configure sidekiq app client
-      Sidekiq.configure_client do |config|
-        config.on(:startup) do
-          next unless options[:sidekiq_autostart]
-          queue_managers.values.each { |m| Client.throttle.update(m) }
-        end
-
-        config.client_middleware do |chain|
-          chain.add(Client, queue_managers)
-        end
+        formation
       end
     end
 

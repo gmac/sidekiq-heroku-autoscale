@@ -1,20 +1,20 @@
 require 'test_helper'
 require 'yaml'
 
-describe 'DynoManager.build_from_config' do
+describe 'FormationManager.build_from_config' do
   before do
-    ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN'] = 'n4d4'
-    ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP'] = 'testing'
-    @subject = ::Sidekiq::HerokuAutoscale::DynoManager
+    ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN'] = 'humd1ng3r'
+    ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP'] = 'testing-app'
+    @subject = ::Sidekiq::HerokuAutoscale::FormationManager
   end
 
   it 'builds managers with options' do
     config = YAML.load_file(File.expand_path("../../fixtures/config.yml", __FILE__))
-    managers_by_queue = @subject.build_from_config(config)
+    formation = @subject.build_from_config(config)
 
-    assert_equal %w[default low high], managers_by_queue.keys
+    assert_equal %w[default low high], formation.queue_names
 
-    first = managers_by_queue['low']
+    first = formation.process_for_queue('low')
     assert_equal 'test-app', first.app_name
     assert_equal 'first', first.process_name
     assert_equal %w[default low], first.queue_system.watch_queues
@@ -26,7 +26,7 @@ describe 'DynoManager.build_from_config' do
     assert_equal 15, first.quiet_buffer
     assert_equal 15, first.minimum_uptime
 
-    second = managers_by_queue['high']
+    second = formation.process_for_queue('high')
     assert_equal 'test-app', second.app_name
     assert_equal 'second', second.process_name
     assert_equal %w[high], second.queue_system.watch_queues
@@ -40,12 +40,12 @@ describe 'DynoManager.build_from_config' do
   end
 
   it 'fills in name/token with environment variables' do
-    managers_by_queue = @subject.build_from_config({
+    formation = @subject.build_from_config({
       processes: {
         first: { system: { watch_queues: %w[low] } }
       }
     })
-    assert_equal ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP'], managers_by_queue['low'].app_name
+    assert_equal 'testing-app', formation.process_for_queue('low').app_name
   end
 
   it 'errors for queues shared across process types' do

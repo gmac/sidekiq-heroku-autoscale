@@ -287,39 +287,39 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     it 'has no effect when quieting above current process count' do
       subject = @subject.new(watch_queues: '*')
       process_workers('worker.1' => %w[default])
-      stub_quietable_processes(subject)
-
-      assert_not subject.quietdown!(2)
-      assert_not subject.sidekiq_processes.find(&:stopping?)
+      stub_quietable(subject) do
+        assert_not subject.quietdown!(2)
+        assert_not subject.sidekiq_processes.find(&:stopping?)
+      end
     end
 
     it 'has no effect when quieting at current process count' do
       subject = @subject.new(watch_queues: '*')
       process_workers('worker.1' => %w[default])
-      stub_quietable_processes(subject)
-
-      assert_not subject.quietdown!(1)
-      assert_not subject.sidekiq_processes.find(&:stopping?)
+      stub_quietable(subject) do
+        assert_not subject.quietdown!(1)
+        assert_not subject.sidekiq_processes.find(&:stopping?)
+      end
     end
 
     it 'quiets a single process down to zero' do
       subject = @subject.new(watch_queues: '*')
       process_workers('worker.1' => %w[default])
-      stub_quietable_processes(subject)
-
-      assert subject.quietdown!(0)
-      assert subject.sidekiq_processes.find(&:stopping?)
+      stub_quietable(subject) do
+        assert subject.quietdown!(0)
+        assert subject.sidekiq_processes.find(&:stopping?)
+      end
     end
 
     it 'quiets multiple processes above a threshold' do
       subject = @subject.new(watch_queues: '*')
       process_workers('worker.3' => %w[low], 'worker.1' => %w[low], 'worker.2' => %w[low])
-      stub_quietable_processes(subject)
-
-      assert subject.quietdown!(1)
-      assert_not subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
-      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.2' }.stopping?
-      assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.3' }.stopping?
+      stub_quietable(subject) do
+        assert subject.quietdown!(1)
+        assert_not subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.1' }.stopping?
+        assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.2' }.stopping?
+        assert subject.sidekiq_processes.find { |p| p['hostname'] == 'worker.3' }.stopping?
+      end
     end
   end
 
@@ -361,15 +361,16 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     end
   end
 
-  def stub_quietable_processes(subject)
+  # allows process instances to have `quiet!` called without a sidekiq server
+  # (stubs each process instance's quiet! method with self-assigning state)
+  def stub_quietable(subject, &block)
     # map all process objects with self-flagging quiet! stubs
-    stubbed = subject.sidekiq_processes.map do |p|
-      def p.quiet!; @attribs['quiet'] = 'true'; end
-      p
+    quietable_processes = subject.sidekiq_processes.map do |process|
+      def process.quiet!; @attribs['quiet'] = 'true'; end
+      process
     end
 
-    # stub the process set to return the stubbed instances
-    subject.instance_variable_set(:@stubbed_sidekiq_processes, stubbed)
-    def subject.sidekiq_processes; @stubbed_sidekiq_processes; end
+    # stub the modified process instances onto the subject
+    subject.stub(:sidekiq_processes, quietable_processes, &block)
   end
 end
