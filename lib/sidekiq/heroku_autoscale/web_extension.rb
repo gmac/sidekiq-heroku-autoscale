@@ -8,10 +8,13 @@ module Sidekiq
 
       def self.registered(app)
         app.get '/dynos' do
+          @app = ::Sidekiq::HerokuAutoscale.app
           @processes = {
             default: 0,
             low: 1
           }
+
+          ::HardWorker.perform_async(12345)
           render(:erb, File.read(File.join(VIEW_PATH, 'index.erb')))
         end
 

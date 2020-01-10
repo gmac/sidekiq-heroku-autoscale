@@ -1,20 +1,20 @@
 require 'test_helper'
 require 'yaml'
 
-describe 'FormationManager.build_from_config' do
+describe 'HerokuApp' do
   before do
     ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN'] = 'humd1ng3r'
     ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP'] = 'testing-app'
-    @subject = ::Sidekiq::HerokuAutoscale::FormationManager
+    @subject = ::Sidekiq::HerokuAutoscale::HerokuApp
   end
 
-  it 'builds managers with options' do
+  it 'builds app with options' do
     config = YAML.load_file(File.expand_path("../../fixtures/config.yml", __FILE__))
-    formation = @subject.build_from_config(config)
+    app = @subject.new(config)
 
-    assert_equal %w[default low high], formation.queue_names
+    assert_equal %w[default low high], app.queue_names
 
-    first = formation.process_for_queue('low')
+    first = app.process_for_queue('low')
     assert_equal 'test-app', first.app_name
     assert_equal 'first', first.process_name
     assert_equal %w[default low], first.queue_system.watch_queues
@@ -26,7 +26,7 @@ describe 'FormationManager.build_from_config' do
     assert_equal 15, first.quiet_buffer
     assert_equal 15, first.minimum_uptime
 
-    second = formation.process_for_queue('high')
+    second = app.process_for_queue('high')
     assert_equal 'test-app', second.app_name
     assert_equal 'second', second.process_name
     assert_equal %w[high], second.queue_system.watch_queues
@@ -40,17 +40,17 @@ describe 'FormationManager.build_from_config' do
   end
 
   it 'fills in name/token with environment variables' do
-    formation = @subject.build_from_config({
+    app = @subject.new({
       processes: {
         first: { system: { watch_queues: %w[low] } }
       }
     })
-    assert_equal 'testing-app', formation.process_for_queue('low').app_name
+    assert_equal 'testing-app', app.process_for_queue('low').app_name
   end
 
   it 'errors for queues shared across process types' do
     assert_raises_message(ArgumentError, /must be exclusive/) do
-      @subject.build_from_config({
+      @subject.new({
         processes: {
           first: { system: { watch_queues: %w[low medium] } },
           second: { system: { watch_queues: %w[medium high] } }
@@ -61,7 +61,7 @@ describe 'FormationManager.build_from_config' do
 
   it 'errors when all-queues is not exclusive' do
     assert_raises_message(ArgumentError, /must be exclusive/) do
-      @subject.build_from_config({
+      @subject.new({
         processes: {
           first: { system: { watch_queues: '*' } },
           second: { system: { watch_queues: %w[high] } }

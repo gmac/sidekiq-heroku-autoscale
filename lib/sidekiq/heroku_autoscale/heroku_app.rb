@@ -1,15 +1,22 @@
 module Sidekiq
   module HerokuAutoscale
 
-    class FormationManager
+    class HerokuApp
+      attr_reader :client, :app_name
+
       # Builds dyno managers based on configuration (presumably loaded from YAML)
       # Builds a manager per Heroku process, and keys each under their queue names. Ex:
       # { "default" => manager1, "high" => manager2, "low" => manager2 }
-      def self.build_from_config(config)
+      def initialize(config)
         config = JSON.parse(JSON.generate(config), symbolize_names: true)
 
-        processes = config[:processes].each_with_object({}) do |(name, opts), memo|
-          manager = ProcessManager.new(api_token: config[:api_token], app_name: config[:app_name], process_name: name, **opts)
+        api_token = config[:api_token] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN']
+        @client = api_token ? PlatformAPI.connect_oauth(api_token) : nil
+
+        @app_name = config[:app_name] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP']
+
+        @processes = config[:processes].each_with_object({}) do |(name, opts), memo|
+          manager = ProcessManager.new(api_client: @client, app_name: @app_name, process_name: name, **opts)
           manager.queue_system.watch_queues.each do |queue_name|
             # a queue may only be managed by a single heroku process type (to avoid scaling conflicts)
             # thus, raise an error over duplicate queue names or when "*" isn't exclusive
@@ -19,12 +26,6 @@ module Sidekiq
             memo[queue_name] = manager
           end
         end
-
-        new(processes)
-      end
-
-      def initialize(processes)
-        @processes = processes
       end
 
       def queue_names
@@ -32,7 +33,7 @@ module Sidekiq
       end
 
       def process_names
-        @processes.values.map(&:process_name)
+        @processes.values.map(&:process_name).uniq
       end
 
       def process_for_queue(queue_name)
@@ -41,14 +42,6 @@ module Sidekiq
 
       def process_by_name(process_name)
         @processes.values.detect { |f| f.process_name == process_name }
-      end
-
-      def logger=(logger)
-        @processes.values.each { |f| f.logger = logger }
-      end
-
-      def exception_handler=(handler)
-        @processes.values.each { |f| f.exception_handler = handler }
       end
     end
 

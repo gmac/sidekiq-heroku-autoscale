@@ -4,12 +4,12 @@ module Sidekiq
     # Sidekiq client middleware
     # Performs scale-up when items are queued and there are no workers running
     class Client
-      @mutex = Mutex.new
+      ACCESSOR_MUTEX = Mutex.new
       @throttle = nil
 
       def self.throttle
         return @throttle if @throttle
-        @mutex.synchronize { @throttle ||= PollInterval.new(:wait_for_update!, after_update: 1) }
+        ACCESSOR_MUTEX.synchronize { @throttle ||= PollInterval.new(:wait_for_update!, after_update: 1) }
         @throttle
       end
 
@@ -18,6 +18,7 @@ module Sidekiq
       end
 
       def call(worker_class, item, queue, _=nil)
+        puts '**CLIENT'
         yield
       ensure
         self.class.throttle.update(@formation.process_for_queue(queue))

@@ -1,5 +1,5 @@
 require 'sidekiq/heroku_autoscale/client'
-require 'sidekiq/heroku_autoscale/formation_manager'
+require 'sidekiq/heroku_autoscale/heroku_app'
 require 'sidekiq/heroku_autoscale/poll_interval'
 require 'sidekiq/heroku_autoscale/process_manager'
 require 'sidekiq/heroku_autoscale/queue_system'
@@ -10,46 +10,59 @@ module Sidekiq
   module HerokuAutoscale
 
     class << self
+      def app
+        @app
+      end
+
       def init(options)
         options = options.transform_keys(&:to_sym)
-        formation = FormationManager.build_from_config(options)
+        @app = HerokuApp.new(options)
 
         # configure sidekiq queue server
         Sidekiq.configure_server do |config|
           config.on(:startup) do
+            puts 'server startup'
             dyno_name = ENV['DYNO']
             next unless dyno_name
 
-            process = formation.process_by_name(dyno_name.split('.').first)
+            process = @app.process_by_name(dyno_name.split('.').first)
             next unless process
 
             Server.monitor.update(process)
           end
 
           config.server_middleware do |chain|
-            chain.add(Server, formation)
+            chain.add(Server, @app)
           end
 
           # for jobs that queue other jobs...
           config.client_middleware do |chain|
-            chain.add(Client, formation)
+            chain.add(Client, @app)
           end
         end
 
         # configure sidekiq app client
         Sidekiq.configure_client do |config|
-          config.on(:startup) do
-            next unless options[:sidekiq_autostart]
-            formation.values.each { |m| Client.throttle.update(m) }
-          end
-
           config.client_middleware do |chain|
-            chain.add(Client, formation)
+            chain.add(Client, @app)
           end
         end
 
-        formation
+        @app
       end
+    end
+
+    attr_writer :logger, :exception_handler
+
+    def logger
+      @logger ||= Sidekiq.logger
+    end
+
+    def exception_handler
+      @exception_handler ||= lambda { |ex|
+        p ex
+        puts ex.backtrace
+      }
     end
 
   end

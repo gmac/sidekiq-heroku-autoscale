@@ -1,5 +1,4 @@
 require 'platform-api'
-require 'logger'
 
 module Sidekiq
   module HerokuAutoscale
@@ -15,8 +14,8 @@ module Sidekiq
       # @param [String] token Heroku OAuth access token
       # @param [String] app_name Heroku app_name name
       def initialize(
-        api_token: nil,
-        app_name: nil,
+        app_name:,
+        api_client: nil,
         process_name: 'worker',
         system: {},
         scale: {},
@@ -24,9 +23,8 @@ module Sidekiq
         quiet_buffer: 10,
         minimum_uptime: 10
       )
-        api_token ||= ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN']
-        @client = PlatformAPI.connect_oauth(api_token)
-        @app_name = app_name || ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP']
+        @client = api_client
+        @app_name = app_name
         @process_name = process_name.to_s
         @queue_system = QueueSystem.new(system)
         @scale_strategy = ScaleStrategy.new(scale)
@@ -137,6 +135,7 @@ module Sidekiq
       end
 
       def update!(current=nil, target=nil)
+        puts "**UPDATE #{ process_name }"
         touch
         current ||= get_dyno_count
 
@@ -186,19 +185,6 @@ module Sidekiq
         current
       end
 
-      attr_writer :logger, :exception_handler
-
-      def logger
-        @logger ||= Logger.new
-      end
-
-      def exception_handler
-        @exception_handler ||= lambda { |ex|
-          p ex
-          puts ex.backtrace
-        }
-      end
-
     private
 
       def class_key
@@ -210,23 +196,36 @@ module Sidekiq
       end
 
       def get_dyno_count
-        realtime_dyno_count(@client.formation.list(app_name)
-          .select { |item| item['type'] == process_name }
-          .map { |item| item['quantity'] }
-          .reduce(0, &:+))
-      rescue Excon::Errors::Error, Heroku::API::Errors::Error => e
-        exception_handler.call(e)
-        realtime_dyno_count(0)
+        if @client.present?
+          count = @client.formation.list(app_name)
+            .select { |item| item['type'] == process_name }
+            .map { |item| item['quantity'] }
+            .reduce(0, &:+)
+          set_cached_dyno_count(count)
+        else
+          get_cached_dyno_count
+        end
+      rescue StandardError => e
+        ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
+        set_cached_dyno_count(0)
       end
 
       def set_dyno_count(n)
-        @client.formation.update(app_name, process_name, { quantity: n })
-        realtime_dyno_count(n)
-      rescue Excon::Errors::Error, Heroku::API::Errors::Error => e
-        exception_handler.call(e)
+        if @client.present?
+          @client.formation.update(app_name, process_name, { quantity: n })
+        end
+
+        set_cached_dyno_count(n)
+      rescue StandardError => e
+        ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
+        get_cached_dyno_count
       end
 
-      def realtime_dyno_count(n)
+      def get_cached_dyno_count
+        ::Sidekiq.redis { |c| c.hget(class_key, process_name) } || 0
+      end
+
+      def set_cached_dyno_count(n)
         ::Sidekiq.redis { |c| c.hset(class_key, process_name, n) }
         n
       end
