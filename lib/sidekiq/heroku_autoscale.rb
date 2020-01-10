@@ -9,6 +9,10 @@ require 'sidekiq/heroku_autoscale/server'
 module Sidekiq
   module HerokuAutoscale
 
+    DEFAULTS = {
+      app: nil
+    }
+
     class << self
       def app
         @app
