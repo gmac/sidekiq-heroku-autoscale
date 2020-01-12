@@ -1,4 +1,4 @@
-require 'sidekiq/heroku_autoscale/process_manager'
+require 'sidekiq/heroku_autoscale/process'
 require 'sidekiq/heroku_autoscale/web_extension'
 
 if defined?(::Sidekiq::Web)

@@ -1,17 +1,12 @@
-require 'sidekiq/heroku_autoscale/client'
 require 'sidekiq/heroku_autoscale/heroku_app'
+require 'sidekiq/heroku_autoscale/middleware'
 require 'sidekiq/heroku_autoscale/poll_interval'
-require 'sidekiq/heroku_autoscale/process_manager'
+require 'sidekiq/heroku_autoscale/process'
 require 'sidekiq/heroku_autoscale/queue_system'
 require 'sidekiq/heroku_autoscale/scale_strategy'
-require 'sidekiq/heroku_autoscale/server'
 
 module Sidekiq
   module HerokuAutoscale
-
-    DEFAULTS = {
-      app: nil
-    }
 
     class << self
       def app
@@ -21,6 +16,8 @@ module Sidekiq
       def init(options)
         options = options.transform_keys(&:to_sym)
         @app = HerokuApp.new(options)
+
+        ::Sidekiq.logger.warn('Heroku platform API is not configured for Sidekiq::HerokuAutoscale') unless @app.live?
 
         # configure sidekiq queue server
         Sidekiq.configure_server do |config|
@@ -32,23 +29,23 @@ module Sidekiq
             process = @app.process_by_name(dyno_name.split('.').first)
             next unless process
 
-            Server.monitor.update(process)
+            Process.monitor.update(process)
           end
 
           config.server_middleware do |chain|
-            chain.add(Server, @app)
+            chain.add(Middleware, @app)
           end
 
           # for jobs that queue other jobs...
           config.client_middleware do |chain|
-            chain.add(Client, @app)
+            chain.add(Middleware, @app)
           end
         end
 
         # configure sidekiq app client
         Sidekiq.configure_client do |config|
           config.client_middleware do |chain|
-            chain.add(Client, @app)
+            chain.add(Middleware, @app)
           end
         end
 
@@ -56,11 +53,7 @@ module Sidekiq
       end
     end
 
-    attr_writer :logger, :exception_handler
-
-    def logger
-      @logger ||= Sidekiq.logger
-    end
+    attr_writer :exception_handler
 
     def exception_handler
       @exception_handler ||= lambda { |ex|

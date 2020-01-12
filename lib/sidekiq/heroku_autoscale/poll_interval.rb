@@ -9,17 +9,17 @@ module Sidekiq
         @requests = {}
       end
 
-      def update(manager)
-        return unless manager
+      def update(process)
+        return unless process
 
-        @requests[manager.process_name] ||= { manager: manager }
-        @requests[manager.process_name][:request_at] = Time.now.utc
+        process.active_at = Time.now.utc
+        @requests[process.name] ||= process
 
         @thread ||= Thread.new do
           begin
             while @requests.size > 0
               sleep(@before_update) if @before_update > 0
-              @requests.reject! { |k, v| v[:manager].send(@method_name, v[:request_at]) }
+              @requests.reject! { |name, process| process.send(@method_name) }
               sleep(@after_update) if @after_update > 0
             end
           ensure
