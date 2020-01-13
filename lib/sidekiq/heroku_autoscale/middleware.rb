@@ -12,9 +12,9 @@ module Sidekiq
         process = @app.process_for_queue(queue)
 
         if ::Sidekiq.server?
-          ::Sidekiq::HerokuAutoscale::Process.server.update(process)
+          Process.monitor.update(process)
         else
-          ::Sidekiq::HerokuAutoscale::Process.throttle.update(process)
+          Process.throttle.update(process)
         end
       end
     end

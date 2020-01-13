@@ -16,7 +16,7 @@ describe 'HerokuApp' do
 
     first = app.process_for_queue('low')
     assert_equal 'test-app', first.app_name
-    assert_equal 'first', first.process_name
+    assert_equal 'first', first.name
     assert_equal %w[default low], first.queue_system.watch_queues
     assert_not first.queue_system.include_retrying
     assert_not first.queue_system.include_scheduled
@@ -28,7 +28,7 @@ describe 'HerokuApp' do
 
     second = app.process_for_queue('high')
     assert_equal 'test-app', second.app_name
-    assert_equal 'second', second.process_name
+    assert_equal 'second', second.name
     assert_equal %w[high], second.queue_system.watch_queues
     assert_equal 'linear', second.scale_strategy.mode
     assert_equal 5, second.scale_strategy.max_workers
@@ -37,6 +37,17 @@ describe 'HerokuApp' do
     assert_equal 20, second.throttle
     assert_equal 20, second.quiet_buffer
     assert_equal 20, second.minimum_uptime
+  end
+
+  it 'provides processes by name and by queue' do
+    app = @subject.new({
+      processes: {
+        first: { system: { watch_queues: %w[low] } },
+        second: { system: { watch_queues: %w[med high] } }
+      }
+    })
+    assert_equal [:first, :second], app.process_names
+    assert_equal %w[low med high], app.queue_names
   end
 
   it 'fills in name/token with environment variables' do

@@ -1,15 +1,22 @@
-<div class= "dashboard clearfix">
-  <h3>Dynos
-    <span class="beacon">
-      <span class="ring"></span>
-      <span class="dot"></span>
-    </span>
-  </h3>
-</div>
+<% if @app %>
+  <div class= "dashboard clearfix">
+    <h3>Dynos
+      <span class="beacon">
+        <span class="ring"></span>
+        <span class="dot"></span>
+      </span>
+    </h3>
+  </div>
 
-<div class="row chart">
-  <div id="realtime" data-process-names="worker,sidekiq" data-update-url="<%= root_path %>dynos/stats"></div>
-  <div id="realtime-legend"></div>
-</div>
+  <div class="row chart">
+    <div id="realtime" data-process-names="worker,sidekiq" data-update-url="<%= root_path %>dynos/stats"></div>
+    <div id="realtime-legend"></div>
+  </div>
 
-<script type="text/javascript" src="<%= root_path %>dynos/dashboard.js?v=4"></script>
+  <script type="text/javascript" src="<%= root_path %>dynos/dashboard.js?v=4"></script>
+<% else %>
+  <div class= "dashboard clearfix">
+    <h3>Dynos</h3>
+    <p>Heroku Autoscale is not initialized.</p>
+  </div>
+<% end %>

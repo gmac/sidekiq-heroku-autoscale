@@ -1,3 +1,5 @@
+require 'platform-api'
+
 module Sidekiq
   module HerokuAutoscale
 
@@ -10,7 +12,7 @@ module Sidekiq
 
         api_token = config[:api_token] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN']
         @app_name = config[:app_name] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP']
-        @client = api_token ? Platformclient.connect_oauth(api_token) : nil
+        @client = api_token ? PlatformAPI.connect_oauth(api_token) : nil
 
         @processes_by_name = {}
         @processes_by_queue = {}
@@ -48,6 +50,10 @@ module Sidekiq
 
       def process_for_queue(queue_name)
         @processes_by_queue[queue_name] || @processes_by_queue['*']
+      end
+
+      def stats
+        @processes_by_name.values.each_with_object({}) { |p, m| m[p.name] = p.dynos }
       end
     end
 

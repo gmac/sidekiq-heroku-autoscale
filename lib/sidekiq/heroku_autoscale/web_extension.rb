@@ -8,13 +8,8 @@ module Sidekiq
 
       def self.registered(app)
         app.get '/dynos' do
+          #::HardWorker.perform_async(12345)
           @app = ::Sidekiq::HerokuAutoscale.app
-          @processes = {
-            default: 0,
-            low: 1
-          }
-
-          ::HardWorker.perform_async(12345)
           render(:erb, File.read(File.join(VIEW_PATH, 'index.erb')))
         end
 
@@ -28,12 +23,10 @@ module Sidekiq
         end
 
         app.get '/dynos/stats' do
+          heroku_app = ::Sidekiq::HerokuAutoscale.app
           sidekiq_stats = ::Sidekiq::Stats.new
           json(
-            dynos: {
-              worker: rand(0..3),
-              sidekiq: rand(0..3),
-            },
+            dynos: heroku_app.stats,
             sidekiq: {
               processed: sidekiq_stats.processed,
               failed: sidekiq_stats.failed,

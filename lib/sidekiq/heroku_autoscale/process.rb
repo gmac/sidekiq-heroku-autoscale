@@ -1,5 +1,3 @@
-require 'platform-api'
-
 module Sidekiq
   module HerokuAutoscale
 
@@ -15,11 +13,12 @@ module Sidekiq
         MONITOR
       end
 
-      attr_reader :client, :app_name, :name, :quieted_to
+      attr_reader :client, :app_name, :name
+      attr_reader :queue_system, :scale_strategy
 
       attr_accessor :throttle, :quiet_buffer, :minimum_uptime
-      attr_accessor :dynos, :active_at, :updated_at, :quieted_at, :started_at
-      attr_accessor :queue_system, :scale_strategy
+      attr_accessor :active_at, :updated_at, :quieted_at, :started_at
+      attr_accessor :dynos, :quieted_to
 
       # @param [String] name process name this scaler controls
       # @param [String] token Heroku OAuth access token
@@ -107,7 +106,7 @@ module Sidekiq
 
       # wrapper for polling the downscale process (server)
       # polling runs until an update returns zero dynos.
-      def wait_for_shutdown!(process_name)
+      def wait_for_shutdown!
         return false if throttled?
 
         sync_attributes
@@ -174,8 +173,8 @@ module Sidekiq
       end
 
       def set_dyno_count!(count)
-        @client.formation.update(app_name, process_name, { quantity: count }) if @client.present?
-        set_attributes(dynos: count, quieted_to: nil, updated_at: nil)
+        @client.formation.update(app_name, name, { quantity: count }) if @client.present?
+        set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
         count
       rescue StandardError => e
         ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
@@ -183,35 +182,39 @@ module Sidekiq
       end
 
       def set_attributes(attrs)
-        pairs = []
+        cache = attrs.dup
         if attrs.key?(:dynos)
-          @dynos = attrs[:dynos]
-          @started_at = dynos > 0 ? (@started_at || Time.now.utc) : nil
-          pairs.push('dynos', @dynos, 'started_at', @started_at.to_i)
+          cache['dynos'] = @dynos = attrs[:dynos]
+
+          @started_at = dynos && dynos > 0 ? (@started_at || Time.now.utc) : nil
+          cache['started_at'] = @started_at ? @started_at.to_i : nil
+        end
+        if attrs.key?(:quieted_to)
+          cache['quieted_to'] = @quieted_to = attrs[:quieted_to]
         end
         if attrs.key?(:quieted_at)
           @quieted_at = attrs[:quieted_at]
-          pairs.push('quieted_at', @quieted_at.to_i)
-        end
-        if attrs.key?(:quieted_to)
-          @quieted_to = attrs[:quieted_to]
-          pairs.push('quieted_to', @quieted_to)
+          cache['quieted_at'] = @quieted_at ? @quieted_at.to_i : nil
         end
         if attrs.key?(:updated_at)
           @updated_at = attrs[:updated_at]
-          pairs.push('updated_at', @updated_at.to_i)
+          cache['updated_at'] = @updated_at ? @updated_at.to_i : nil
         end
-        if pairs.length > 0
-          ::Sidekiq.redis { |c| c.hmset(cache_key, *pairs) }
+
+        del, set = cache.partition { |k, v| v.nil? }
+
+        ::Sidekiq.redis do |c|
+          c.hmset(cache_key, *set.flatten) if set.any?
+          c.hdel(cache_key, *del.map(&:first)) if del.any?
         end
       end
 
       # syncs quietdown configuration across processes
       def sync_attributes
         if cache = ::Sidekiq.redis { |c| c.hgetall(cache_key) }
-          @dynos = cache['dynos'].to_i if cache['dynos']
-          @updated_at = Time.at(cache['updated_at'].to_i).utc if cache['updated_at']
-          @started_at = Time.at(cache['started_at'].to_i).utc if cache['started_at']
+          @dynos = cache['dynos'] ? cache['dynos'].to_i : nil
+          @updated_at = cache['updated_at'] ? Time.at(cache['updated_at'].to_i).utc : nil
+          @started_at = cache['started_at'] ? Time.at(cache['started_at'].to_i).utc : nil
           @quieted_to = cache['quieted_to'] ? cache['quieted_to'].to_i : nil
           @quieted_at = cache['quieted_at'] ? Time.at(cache['quieted_at'].to_i).utc : nil
           return true
