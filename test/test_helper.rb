@@ -29,9 +29,11 @@ end
 class TestClient
   class List
     def list(app)
+      raise 'not implemented'
     end
 
     def update(params)
+      raise 'not implemented'
     end
   end
 

@@ -314,64 +314,89 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
   end
 
-  # describe 'update!' do
-  #   before do
-  #     stub_heroku_api(@subject)
-  #   end
+  describe 'update!' do
+    it 'sets fetched dyno count and update timestamp' do
+      assert_equal 0, @subject.dynos
+      assert_not @subject.updated_at
 
-  #   it 'sets startup time when unset with workers' do
-  #     @subject.startup_at = nil
-  #     assert_not @subject.startup_at
+      @subject.update!(1, 0)
+      assert_equal 1, @subject.dynos
+      assert @subject.updated_at
+    end
 
-  #     @subject.update!(0, 0)
-  #     assert_not @subject.startup_at
+    it 'sets/clears startup time based on running dynos' do
+      @subject.update!(0, 0)
+      assert_not @subject.started_at
 
-  #     @subject.update!(1, 1)
-  #     assert @subject.startup_at
-  #   end
+      @subject.update!(1, 1)
+      assert @subject.started_at
 
-  #   it 'does not modify an existing startup time' do
-  #     timestamp = Time.now.utc - 10
-  #     @subject.startup_at = timestamp
-  #     @subject.update!(1, 1)
-  #     assert_equal_times timestamp, @subject.startup_at
-  #   end
+      @subject.update!(0, 0)
+      assert_not @subject.started_at
+    end
 
-  #   it 'returns current dynos while idle' do
-  #     assert_equal 2, @subject.update!(2, 2)
-  #   end
+    it 'returns current dynos while in statis with target threshold' do
+      assert_equal 2, @subject.update!(2, 2)
+    end
 
-  #   it 'returns target dynos when upscaling' do
-  #     assert_equal 2, @subject.update!(1, 2)
-  #   end
+    it 'returns target dynos when upscaling' do
+      mock_set_dynos = MiniTest::Mock.new.expect(:call, 2, [2])
+      @subject.stub(:set_dyno_count!, mock_set_dynos) do
+        assert_equal 2, @subject.update!(1, 2)
+      end
+      mock_set_dynos.verify
+    end
 
-  #   it 'sets unset startup time when upscaling' do
-  #     @subject.startup_at = nil
-  #     @subject.update!(1, 2)
-  #     assert @subject.startup_at
-  #   end
-
-  #   it 'does not modify an existing startup time when upscaling' do
-  #     timestamp = Time.now.utc - 10
-  #     @subject.startup_at = timestamp
-  #     @subject.update!(1, 2)
-  #     assert_equal_times timestamp, @subject.startup_at
-  #   end
-  # end
+    it 'does not modify existing startup time when upscaling' do
+      mock_set_dynos = MiniTest::Mock.new.expect(:call, 2, [2])
+      @subject.stub(:set_dyno_count!, mock_set_dynos) do
+        timestamp = Time.now.utc - 10
+        @subject.started_at = timestamp
+        @subject.update!(1, 2)
+        assert_equal_times timestamp, @subject.started_at
+      end
+      mock_set_dynos.verify
+    end
+  end
 
   describe 'fetch_dyno_count' do
-    it 'fetches total dynos for a process type via PlatformAPI' do
+    before do
       options = ENV_CONFIG.merge(client: TestClient.new, name: 'sidekiq')
       @subject = ::Sidekiq::HerokuAutoscale::Process.new(options)
+    end
+
+    it 'fetches total dynos for a process type via PlatformAPI' do
       @subject.client.formation.stub(:list, JSON.parse(File.read("#{ FIXTURES_PATH }/formation_list.json"))) do
         assert_equal 2, @subject.fetch_dyno_count
       end
     end
+
+    it 'handles errors with the universal exception handler' do
+      called = false
+      ::Sidekiq::HerokuAutoscale.exception_handler = lambda { |ex| called = true }
+      @subject.fetch_dyno_count
+      assert called
+    end
   end
 
-  def stub_heroku_api(subject, dynos=0)
-    subject.instance_variable_set(:@dyno_count, dynos)
-    def subject.get_dyno_count; @dyno_count; end
-    def subject.set_dyno_count(n); nil; end
+  describe 'set_dyno_count!' do
+    before do
+      options = ENV_CONFIG.merge(client: TestClient.new, name: 'sidekiq')
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(options)
+    end
+
+    it 'sets total dynos for a process type via PlatformAPI' do
+      @subject.client.formation.stub(:update, nil) do
+        puts @subject.set_dyno_count!(2)
+        assert_equal 2, @subject.set_dyno_count!(2)
+      end
+    end
+
+    it 'handles errors with the universal exception handler' do
+      called = false
+      ::Sidekiq::HerokuAutoscale.exception_handler = lambda { |ex| called = true }
+      @subject.set_dyno_count!(2)
+      assert called
+    end
   end
 end

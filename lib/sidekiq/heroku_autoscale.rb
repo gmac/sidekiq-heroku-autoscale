@@ -51,15 +51,15 @@ module Sidekiq
 
         @app
       end
-    end
 
-    attr_writer :exception_handler
+      def exception_handler
+        @exception_handler ||= lambda { |ex|
+          p ex
+          puts ex.backtrace
+        }
+      end
 
-    def exception_handler
-      @exception_handler ||= lambda { |ex|
-        p ex
-        puts ex.backtrace
-      }
+      attr_writer :exception_handler
     end
 
   end
