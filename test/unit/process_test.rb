@@ -1,12 +1,12 @@
 require 'test_helper'
 
 describe 'Sidekiq::HerokuAutoscale::Process' do
-  ENV_CONFIG = { app_name: 'test-this' }
+  TEST_CONFIG = { app_name: 'test-this', name: 'sidekiq' }
 
   before do
     Sidekiq.redis {|c| c.flushdb }
-    @subject = ::Sidekiq::HerokuAutoscale::Process.new(ENV_CONFIG)
-    @subject2 = ::Sidekiq::HerokuAutoscale::Process.new(ENV_CONFIG)
+    @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG)
+    @subject2 = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG)
   end
 
   describe 'throttled?' do
@@ -199,7 +199,7 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
       @subject2.set_attributes(dynos: nil, quieted_to: nil, quieted_at: nil, updated_at: nil)
       @subject.sync_attributes
-      assert_not @subject.dynos
+      assert_equal 0, @subject.dynos
       assert_not @subject.quieted_to
       assert_not @subject.quieted_at
       assert_not @subject.updated_at
@@ -361,8 +361,7 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   describe 'fetch_dyno_count' do
     before do
-      options = ENV_CONFIG.merge(client: TestClient.new, name: 'sidekiq')
-      @subject = ::Sidekiq::HerokuAutoscale::Process.new(options)
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG.merge(client: TestClient.new))
     end
 
     it 'fetches total dynos for a process type via PlatformAPI' do
@@ -381,14 +380,16 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   describe 'set_dyno_count!' do
     before do
-      options = ENV_CONFIG.merge(client: TestClient.new, name: 'sidekiq')
-      @subject = ::Sidekiq::HerokuAutoscale::Process.new(options)
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG.merge(client: TestClient.new))
     end
 
-    it 'sets total dynos for a process type via PlatformAPI' do
+    it 'sets total dynos for a process type via PlatformAPI, and syncs count' do
       @subject.client.formation.stub(:update, nil) do
-        puts @subject.set_dyno_count!(2)
         assert_equal 2, @subject.set_dyno_count!(2)
+
+        assert_equal 0, @subject2.dynos
+        @subject2.sync_attributes
+        assert_equal 2, @subject2.dynos
       end
     end
 

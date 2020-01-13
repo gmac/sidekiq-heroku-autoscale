@@ -173,7 +173,7 @@ module Sidekiq
       end
 
       def set_dyno_count!(count)
-        @client.formation.update(app_name, name, { quantity: count }) if @client.present?
+        @client.formation.update(app_name, name, { quantity: count }) if @client
         set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
         count
       rescue StandardError => e
@@ -212,7 +212,7 @@ module Sidekiq
       # syncs quietdown configuration across processes
       def sync_attributes
         if cache = ::Sidekiq.redis { |c| c.hgetall(cache_key) }
-          @dynos = cache['dynos'] ? cache['dynos'].to_i : nil
+          @dynos = cache['dynos'] ? cache['dynos'].to_i : 0
           @updated_at = cache['updated_at'] ? Time.at(cache['updated_at'].to_i).utc : nil
           @started_at = cache['started_at'] ? Time.at(cache['started_at'].to_i).utc : nil
           @quieted_to = cache['quieted_to'] ? cache['quieted_to'].to_i : nil
