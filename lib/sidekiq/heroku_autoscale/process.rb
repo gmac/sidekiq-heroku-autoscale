@@ -54,26 +54,26 @@ module Sidekiq
       # checks if the system is downscaling
       # no other scaling is allowed during a cooling period
       def quieting?
-        @quieted_to && @quieted_at
+        !!(@quieted_to && @quieted_at)
       end
 
       def fulfills_quietdown?
-        @quieted_at && Time.now.utc >= @quieted_at + @quiet_buffer
+        !!(@quieted_at && Time.now.utc >= @quieted_at + @quiet_buffer)
       end
 
       # checks if minimum observation uptime has been fulfilled
       def fulfills_uptime?
-        @started_at && Time.now.utc >= @started_at + @minimum_uptime
+        !!(@started_at && Time.now.utc >= @started_at + @minimum_uptime)
       end
 
       # check if a probe time is newer than the last update
       def updated_since_last_activity?
-        @active_at && @updated_at && @updated_at > @active_at
+        !!(@active_at && @updated_at && @updated_at > @active_at)
       end
 
       # # check if last update falls within the throttle window
       def throttled?
-        @updated_at && Time.now.utc < @updated_at + @throttle
+        !!(@updated_at && Time.now.utc < @updated_at + @throttle)
       end
 
       # starts a quietdown period in which excess workers are quieted
@@ -182,11 +182,11 @@ module Sidekiq
       end
 
       def set_attributes(attrs)
-        cache = attrs.dup
+        cache = {}
         if attrs.key?(:dynos)
           cache['dynos'] = @dynos = attrs[:dynos]
 
-          @started_at = dynos && dynos > 0 ? (@started_at || Time.now.utc) : nil
+          @started_at = dynos && dynos > 0 ? (@started_at || attrs[:started_at] || Time.now.utc) : nil
           cache['started_at'] = @started_at ? @started_at.to_i : nil
         end
         if attrs.key?(:quieted_to)

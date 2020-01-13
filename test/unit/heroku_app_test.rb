@@ -9,7 +9,7 @@ describe 'HerokuApp' do
   end
 
   it 'builds app with options' do
-    config = YAML.load_file(File.expand_path("../../fixtures/config.yml", __FILE__))
+    config = YAML.load_file("#{ FIXTURES_PATH }/config.yml")
     app = @subject.new(config)
 
     assert_equal %w[default low high], app.queue_names

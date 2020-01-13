@@ -241,82 +241,78 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       assert @subject.wait_for_update!
     end
 
-    # it 'returns false when throttled' do
-    #   @subject.throttle = 10
-    #   @subject.updated_at = Time.now.utc - 9
-    #   @subject.active_at = @subject.updated_at - 1
-    #   assert_not @subject.wait_for_update!
-    # end
+    it 'returns false when throttled' do
+      @subject.throttle = 10
+      @subject.updated_at = Time.now.utc - 9
+      assert_not @subject.wait_for_update!
+    end
 
-    # it 'returns false when a syncronized update is throttled' do
-    #   @subject.throttle = 10
-    #   @subject.updated_at = Time.now.utc - 15
-    #   @subject2.touch(Time.now.utc - 9)
-    #   assert_not @subject.wait_for_update!(@subject.updated_at + 1)
-    #   assert_equal_times @subject.updated_at, @subject2.updated_at
-    # end
+    it 'returns true when a syncronized update is newer than last activity' do
+      @subject.active_at = Time.now.utc - 10
+      @subject2.set_attributes(updated_at: @subject.active_at + 1)
+      assert @subject.wait_for_update!
+    end
+
+    it 'returns false when a syncronized update is throttled' do
+      @subject.throttle = 10
+      @subject2.set_attributes(updated_at: Time.now.utc - 9)
+      assert_not @subject.wait_for_update!
+      assert_equal_times @subject.updated_at, @subject2.updated_at
+    end
 
     it 'returns true when updated' do
-      mock = MiniTest::Mock.new.expect(:call, 0)
-      @subject.stub(:update!, mock) do
-        @subject.throttle = 10
-        @subject.updated_at = Time.now.utc - 11
-        @subject.active_at = @subject.updated_at + 1
+      mock_update = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock_update) do
         assert @subject.wait_for_update!
       end
-      mock.verify
+      mock_update.verify
     end
   end
 
-  # describe 'wait_for_shutdown!' do
-  #   it 'returns false when throttled' do
-  #     @subject.throttle = 10
-  #     @subject.updated_at = Time.now.utc - 9
-  #     assert_not @subject.wait_for_shutdown!
-  #   end
+  describe 'wait_for_shutdown!' do
+    it 'returns false when throttled' do
+      @subject.throttle = 10
+      @subject.updated_at = Time.now.utc - 9
+      assert_not @subject.wait_for_shutdown!
+    end
 
-  #   it 'returns false when a syncronized update is throttled' do
-  #     @subject.throttle = 10
-  #     @subject.updated_at = Time.now.utc - 15
-  #     @subject2.touch(Time.now.utc - 9)
-  #     assert_not @subject.wait_for_shutdown!
-  #     assert_equal_times @subject.updated_at, @subject2.updated_at
-  #   end
+    it 'returns false when a syncronized update is throttled' do
+      @subject.throttle = 10
+      @subject.updated_at = Time.now.utc - 15
+      @subject2.set_attributes(updated_at: Time.now.utc - 9)
 
-  #   it 'returns false when update returns dynos' do
-  #     mock = MiniTest::Mock.new.expect(:call, 1)
-  #     @subject.stub(:update!, mock) do
-  #       @subject.throttle = 10
-  #       @subject.updated_at = Time.now.utc - 11
-  #       assert_not @subject.wait_for_shutdown!
-  #     end
-  #     mock.verify
-  #   end
+      assert_not @subject.wait_for_shutdown!
+      assert_equal_times @subject.updated_at, @subject2.updated_at
+    end
 
-  #   it 'returns false when update returns no dynos, but uptime has not been met' do
-  #     mock = MiniTest::Mock.new.expect(:call, 0)
-  #     @subject.stub(:update!, mock) do
-  #       @subject.throttle = 10
-  #       @subject.updated_at = Time.now.utc - 11
-  #       @subject.minimum_uptime = 10
-  #       @subject.startup_at = Time.now.utc - 9
-  #       assert_not @subject.wait_for_shutdown!
-  #     end
-  #     mock.verify
-  #   end
+    it 'returns false when update returns dynos' do
+      mock_update = MiniTest::Mock.new.expect(:call, 1)
+      @subject.stub(:update!, mock_update) do
+        assert_not @subject.wait_for_shutdown!
+      end
+      mock_update.verify
+    end
 
-  #   it 'returns true when update returns no dynos and uptime has been met' do
-  #     mock = MiniTest::Mock.new.expect(:call, 0)
-  #     @subject.stub(:update!, mock) do
-  #       @subject.throttle = 10
-  #       @subject.updated_at = Time.now.utc - 11
-  #       @subject.minimum_uptime = 10
-  #       @subject.startup_at = Time.now.utc - 11
-  #       assert @subject.wait_for_shutdown!
-  #     end
-  #     mock.verify
-  #   end
-  # end
+    it 'returns false when update returns no dynos, but uptime has not been met' do
+      mock_update = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock_update) do
+        @subject.minimum_uptime = 10
+        @subject.started_at = Time.now.utc - 9
+        assert_not @subject.wait_for_shutdown!
+      end
+      mock_update.verify
+    end
+
+    it 'returns true when update returns no dynos and uptime has been met' do
+      mock_update = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock_update) do
+        @subject.minimum_uptime = 10
+        @subject.set_attributes(dynos: 1, started_at: Time.now.utc - 11)
+        assert @subject.wait_for_shutdown!
+      end
+      mock_update.verify
+    end
+  end
 
   # describe 'update!' do
   #   before do
@@ -362,6 +358,16 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
   #     assert_equal_times timestamp, @subject.startup_at
   #   end
   # end
+
+  describe 'fetch_dyno_count' do
+    it 'fetches total dynos for a process type via PlatformAPI' do
+      options = ENV_CONFIG.merge(client: TestClient.new, name: 'sidekiq')
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(options)
+      @subject.client.formation.stub(:list, JSON.parse(File.read("#{ FIXTURES_PATH }/formation_list.json"))) do
+        assert_equal 2, @subject.fetch_dyno_count
+      end
+    end
+  end
 
   def stub_heroku_api(subject, dynos=0)
     subject.instance_variable_set(:@dyno_count, dynos)

@@ -7,6 +7,8 @@ require 'sidekiq-heroku-autoscale'
 
 Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736')
 
+FIXTURES_PATH = File.expand_path("../fixtures", __FILE__)
+
 class TestQueueSystem
   attr_accessor :total_work, :dynos
 
@@ -22,6 +24,20 @@ end
 
 class TestWorker
   include Sidekiq::Worker
+end
+
+class TestClient
+  class List
+    def list(app)
+    end
+
+    def update(params)
+    end
+  end
+
+  def formation
+    @formation ||= List.new
+  end
 end
 
 def assert_not(val)
