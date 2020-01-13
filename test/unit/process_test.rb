@@ -208,18 +208,11 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
   end
 
   describe 'quietdown' do
-    # it 'assigns a downscale target' do
-    #   @subject.quietdown(1)
-    #   assert_equal 1, @subject.quieted_to
-    #   assert @subject.quieted_at
-    #   assert @subject.started_at
-    # end
-
-    # it 'caches quietdown configuration' do
-    #   @subject.quietdown(1)
-    #   cached_value = ::Sidekiq.redis { |c| c.get(@subject.send(:cache_key, :quietdown)) }
-    #   assert_equal [1, @subject.quieted_at.to_s], JSON.parse(cached_value)
-    # end
+    it 'assigns a downscale target' do
+      @subject.quietdown(1)
+      assert_equal 1, @subject.quieted_to
+      assert @subject.quieted_at
+    end
 
     it 'enables quietdown buffer after quieting workers' do
       @subject.queue_system.stub(:quietdown!, true) do
@@ -241,62 +234,39 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
   end
 
-  # describe 'stop_quietdown' do
-  #   it 'clears quietdown configuration' do
-  #     @subject.quietdown(1)
-  #     assert @subject.quieted_to
-  #     assert @subject.quieted_at
+  describe 'wait_for_update!' do
+    it 'returns true when updated since last activity' do
+      @subject.updated_at = Time.now.utc - 10
+      @subject.active_at = @subject.updated_at - 1
+      assert @subject.wait_for_update!
+    end
 
-  #     @subject.stop_quietdown
-  #     assert_not @subject.quieted_to
-  #     assert_not @subject.quieted_at
-  #     assert_not ::Sidekiq.redis { |c| c.exists(@subject.send(:cache_key, :quietdown)) }
-  #   end
-  # end
+    # it 'returns false when throttled' do
+    #   @subject.throttle = 10
+    #   @subject.updated_at = Time.now.utc - 9
+    #   @subject.active_at = @subject.updated_at - 1
+    #   assert_not @subject.wait_for_update!
+    # end
 
-  # describe 'sync_quietdown' do
-  #   it 'syncs configuration between instances' do
-  #     @subject.quietdown(1)
-  #     assert @subject.quieting?
-  #     assert_not @subject2.quieting?
+    # it 'returns false when a syncronized update is throttled' do
+    #   @subject.throttle = 10
+    #   @subject.updated_at = Time.now.utc - 15
+    #   @subject2.touch(Time.now.utc - 9)
+    #   assert_not @subject.wait_for_update!(@subject.updated_at + 1)
+    #   assert_equal_times @subject.updated_at, @subject2.updated_at
+    # end
 
-  #     @subject2.sync_quietdown
-  #     assert @subject2.quieting?
-  #     assert_equal @subject.quieted_to, @subject2.quieted_to
-  #     assert_equal_times @subject.quieted_at, @subject2.quieted_at
-  #   end
-  # end
-
-  # describe 'wait_for_update!' do
-  #   it 'returns true when updated since the probe' do
-  #     @subject.updated_at = Time.now.utc - 10
-  #     assert @subject.wait_for_update!(@subject.updated_at - 1)
-  #   end
-
-  #   it 'returns false when throttled' do
-  #     @subject.throttle = 10
-  #     @subject.updated_at = Time.now.utc - 9
-  #     assert_not @subject.wait_for_update!(@subject.updated_at + 1)
-  #   end
-
-  #   it 'returns false when a syncronized update is throttled' do
-  #     @subject.throttle = 10
-  #     @subject.updated_at = Time.now.utc - 15
-  #     @subject2.touch(Time.now.utc - 9)
-  #     assert_not @subject.wait_for_update!(@subject.updated_at + 1)
-  #     assert_equal_times @subject.updated_at, @subject2.updated_at
-  #   end
-
-  #   it 'returns true when updated' do
-  #     mock = MiniTest::Mock.new.expect(:call, 0)
-  #     @subject.stub(:update!, mock) do
-  #       @subject.throttle = 10
-  #       @subject.updated_at = Time.now.utc - 11
-  #       assert @subject.wait_for_update!(@subject.updated_at + 1)
-  #     end
-  #     mock.verify
-  #   end
-  # end
+    it 'returns true when updated' do
+      mock = MiniTest::Mock.new.expect(:call, 0)
+      @subject.stub(:update!, mock) do
+        @subject.throttle = 10
+        @subject.updated_at = Time.now.utc - 11
+        @subject.active_at = @subject.updated_at + 1
+        assert @subject.wait_for_update!
+      end
+      mock.verify
+    end
+  end
 
   # describe 'wait_for_shutdown!' do
   #   it 'returns false when throttled' do
