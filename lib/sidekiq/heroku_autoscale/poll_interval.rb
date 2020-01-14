@@ -9,10 +9,9 @@ module Sidekiq
         @requests = {}
       end
 
-      def update(process)
+      def call(process)
         return unless process
 
-        process.active_at = Time.now.utc
         @requests[process.name] ||= process
 
         @thread ||= Thread.new do

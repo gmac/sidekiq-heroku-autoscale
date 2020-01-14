@@ -2,23 +2,8 @@ module Sidekiq
   module HerokuAutoscale
 
     class Process
-      STARTUP_THROTTLE = PollInterval.new(:wait_for_update!, after_update: 1)
+      WAKE_THROTTLE = PollInterval.new(:wait_for_update!, after_update: 1)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
-
-      # submits a process for upscaling.
-      # the process is polled until an update is called,
-      # assuring that the process has had the opportunity to wake.
-      # update calls are throttled to 5 second intervals
-      def self.upscale(process)
-        STARTUP_THROTTLE.update(process)
-      end
-
-      # submits a process for runscaling,
-      # which spins the process either up or down.
-      # process is polled until it has been shut down.
-      def self.runscale(process)
-        SHUTDOWN_POLL.update(process)
-      end
 
       attr_reader :client, :app_name, :name
       attr_reader :queue_system, :scale_strategy
@@ -53,6 +38,23 @@ module Sidekiq
 
         @throttle = throttle
         @quiet_buffer = quiet_buffer
+      end
+
+      # submits the process for upscaling.
+      # the process is polled until an update is called,
+      # assuring that the process has had the opportunity to wake.
+      # update calls are throttled to 5 second intervals
+      def wake!
+        @active_at = Time.now.utc
+        WAKE_THROTTLE.call(self)
+      end
+
+      # submits the process for runscaling,
+      # which spins the process either up or down.
+      # process is polled until it has been shut down.
+      def monitor!
+        @active_at = Time.now.utc
+        SHUTDOWN_POLL.call(self)
       end
 
       # checks if the system is downscaling

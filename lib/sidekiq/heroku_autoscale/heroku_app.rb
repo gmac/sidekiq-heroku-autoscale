@@ -36,6 +36,10 @@ module Sidekiq
         !!@client
       end
 
+      def processes
+        @processes_by_name.values
+      end
+
       def process_names
         @processes_by_name.keys
       end

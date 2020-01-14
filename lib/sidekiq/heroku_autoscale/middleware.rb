@@ -10,11 +10,12 @@ module Sidekiq
         yield
       ensure
         process = @app.process_for_queue(queue)
+        return unless process
 
         if ::Sidekiq.server?
-          Process.runscale(process)
+          process.monitor!
         else
-          Process.upscale(process)
+          process.wake!
         end
       end
     end

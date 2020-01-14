@@ -20,7 +20,7 @@ module Sidekiq
         ::Sidekiq.logger.warn('Heroku platform API is not configured for Sidekiq::HerokuAutoscale') unless @app.live?
 
         # configure sidekiq queue server
-        Sidekiq.configure_server do |config|
+        ::Sidekiq.configure_server do |config|
           config.on(:startup) do
             puts 'configure_server startup'
             dyno_name = ENV['DYNO']
@@ -29,7 +29,7 @@ module Sidekiq
             process = @app.process_by_name(dyno_name.split('.').first)
             next unless process
 
-            Process.runscale(process)
+            process.monitor!
           end
 
           config.server_middleware do |chain|
@@ -43,14 +43,14 @@ module Sidekiq
         end
 
         # configure sidekiq app client
-        Sidekiq.configure_client do |config|
-          config.on(:startup) do
-            puts 'configure_client startup'
-          end
-
+        ::Sidekiq.configure_client do |config|
           config.client_middleware do |chain|
             chain.add(Middleware, @app)
           end
+        end
+
+        unless ::Sidekiq.server?
+          @app.processes.each(&:wake!)
         end
 
         @app
