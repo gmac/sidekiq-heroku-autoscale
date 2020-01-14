@@ -95,44 +95,13 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
   end
 
-  describe 'fulfills_uptime?' do
-    it 'returns false without a startup time' do
-      @subject.started_at = nil
-      assert_not @subject.fulfills_uptime?
-    end
-
-    it 'checks if startup time fulfills the uptime requirement' do
-      @subject.minimum_uptime = 10
-
-      @subject.started_at = Time.now.utc - 9
-      assert_not @subject.fulfills_uptime?
-
-      @subject.started_at = Time.now.utc - 11
-      assert @subject.fulfills_uptime?
-    end
-  end
-
   describe 'set_attributes' do
     it 'sets dyno count with a startup time' do
-      @subject.started_at = nil
       @subject.set_attributes(dynos: 2)
       cached = Sidekiq.redis { |c| c.hgetall(@subject.cache_key) }
 
       assert_equal 2, @subject.dynos
-      assert @subject.started_at
-
       assert_equal '2', cached['dynos']
-      assert_equal @subject.started_at.to_i.to_s, cached['started_at']
-    end
-
-    it 'clears startup time when setting zero dynos' do
-      @subject.set_attributes(dynos: 0)
-      cached = Sidekiq.redis { |c| c.hgetall(@subject.cache_key) }
-      assert_equal 0, @subject.dynos
-      assert_not @subject.started_at
-
-      assert_equal '0', cached['dynos']
-      assert_not cached.key?('started_at')
     end
 
     it 'sets and clears a quieted-to count' do
@@ -185,7 +154,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       assert_equal_times quieted_to, @subject.quieted_to
       assert_equal_times quieted_at, @subject.quieted_at
       assert_equal_times updated_at, @subject.updated_at
-      assert_equal_times @subject2.started_at, @subject.started_at
     end
 
     it 'syncs empty attributes from the cache' do
@@ -195,7 +163,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       assert @subject.quieted_to
       assert @subject.quieted_at
       assert @subject.updated_at
-      assert @subject.started_at
 
       @subject2.set_attributes(dynos: nil, quieted_to: nil, quieted_at: nil, updated_at: nil)
       @subject.sync_attributes
@@ -203,7 +170,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       assert_not @subject.quieted_to
       assert_not @subject.quieted_at
       assert_not @subject.updated_at
-      assert_not @subject.started_at
     end
   end
 
@@ -293,21 +259,9 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       mock_update.verify
     end
 
-    it 'returns false when update returns no dynos, but uptime has not been met' do
+    it 'returns true when update returns no dynos' do
       mock_update = MiniTest::Mock.new.expect(:call, 0)
       @subject.stub(:update!, mock_update) do
-        @subject.minimum_uptime = 10
-        @subject.started_at = Time.now.utc - 9
-        assert_not @subject.wait_for_shutdown!
-      end
-      mock_update.verify
-    end
-
-    it 'returns true when update returns no dynos and uptime has been met' do
-      mock_update = MiniTest::Mock.new.expect(:call, 0)
-      @subject.stub(:update!, mock_update) do
-        @subject.minimum_uptime = 10
-        @subject.set_attributes(dynos: 1, started_at: Time.now.utc - 11)
         assert @subject.wait_for_shutdown!
       end
       mock_update.verify
@@ -319,20 +273,9 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       assert_equal 0, @subject.dynos
       assert_not @subject.updated_at
 
-      @subject.update!(1, 0)
+      @subject.update!(1, 1)
       assert_equal 1, @subject.dynos
       assert @subject.updated_at
-    end
-
-    it 'sets/clears startup time based on running dynos' do
-      @subject.update!(0, 0)
-      assert_not @subject.started_at
-
-      @subject.update!(1, 1)
-      assert @subject.started_at
-
-      @subject.update!(0, 0)
-      assert_not @subject.started_at
     end
 
     it 'returns current dynos while in statis with target threshold' do
@@ -347,15 +290,30 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
       mock_set_dynos.verify
     end
 
-    it 'does not modify existing startup time when upscaling' do
-      mock_set_dynos = MiniTest::Mock.new.expect(:call, 2, [2])
-      @subject.stub(:set_dyno_count!, mock_set_dynos) do
-        timestamp = Time.now.utc - 10
-        @subject.started_at = timestamp
-        @subject.update!(1, 2)
-        assert_equal_times timestamp, @subject.started_at
+    it 'starts quietdown when downscaling' do
+      @subject.queue_system.stub(:quietdown!, true) do
+        assert_not @subject.quieting?
+        assert_equal 1, @subject.update!(1, 0)
+        assert_equal 0, @subject.quieted_to
+        assert_not @subject.fulfills_quietdown?
+        assert @subject.quieting?
       end
-      mock_set_dynos.verify
+    end
+
+    it 'immedaitely downscales when nothing was quieted' do
+      @subject.queue_system.stub(:quietdown!, false) do
+        assert_equal 0, @subject.update!(1, 0)
+        assert_not @subject.quieting?
+      end
+    end
+
+    it 'downscales when quietdown is complete' do
+      @subject.quiet_buffer = 10
+      @subject.set_attributes(dynos: 1, quieted_to: 0, quieted_at: Time.now.utc - 11)
+
+      assert @subject.quieting?
+      assert_equal 0, @subject.update!(1, 0)
+      assert_not @subject.quieting?
     end
   end
 

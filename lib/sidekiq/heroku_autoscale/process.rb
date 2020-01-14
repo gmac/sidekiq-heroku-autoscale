@@ -2,22 +2,29 @@ module Sidekiq
   module HerokuAutoscale
 
     class Process
-      THROTTLE = PollInterval.new(:wait_for_update!, after_update: 1)
-      MONITOR = PollInterval.new(:wait_for_shutdown!, before_update: 10)
+      STARTUP_THROTTLE = PollInterval.new(:wait_for_update!, after_update: 1)
+      SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
-      def self.throttle
-        THROTTLE
+      # submits a process for upscaling.
+      # the process is polled until an update is called,
+      # assuring that the process has had the opportunity to wake.
+      # update calls are throttled to 5 second intervals
+      def self.upscale(process)
+        STARTUP_THROTTLE.update(process)
       end
 
-      def self.monitor
-        MONITOR
+      # submits a process for runscaling,
+      # which spins the process either up or down.
+      # process is polled until it has been shut down.
+      def self.runscale(process)
+        SHUTDOWN_POLL.update(process)
       end
 
       attr_reader :client, :app_name, :name
       attr_reader :queue_system, :scale_strategy
 
-      attr_accessor :throttle, :quiet_buffer, :minimum_uptime
-      attr_accessor :active_at, :updated_at, :quieted_at, :started_at
+      attr_accessor :throttle, :quiet_buffer
+      attr_accessor :active_at, :updated_at, :quieted_at
       attr_accessor :dynos, :quieted_to
 
       # @param [String] name process name this scaler controls
@@ -30,8 +37,7 @@ module Sidekiq
         system: {},
         scale: {},
         throttle: 10,
-        quiet_buffer: 10,
-        minimum_uptime: 10
+        quiet_buffer: 10
       )
         @app_name = app_name || name.to_s
         @name = name.to_s
@@ -42,13 +48,11 @@ module Sidekiq
         @dynos = 0
         @active_at = nil
         @updated_at = nil
-        @started_at = nil
         @quieted_at = nil
         @quieted_to = nil
 
         @throttle = throttle
         @quiet_buffer = quiet_buffer
-        @minimum_uptime = minimum_uptime
       end
 
       # checks if the system is downscaling
@@ -59,11 +63,6 @@ module Sidekiq
 
       def fulfills_quietdown?
         !!(@quieted_at && Time.now.utc >= @quieted_at + @quiet_buffer)
-      end
-
-      # checks if minimum observation uptime has been fulfilled
-      def fulfills_uptime?
-        !!(@started_at && Time.now.utc >= @started_at + @minimum_uptime)
       end
 
       # check if a probe time is newer than the last update
@@ -90,7 +89,7 @@ module Sidekiq
         set_attributes(quieted_to: quiet_to, quieted_at: quiet_at)
       end
 
-      # wrapper for throttling the upscale process (sync)
+      # wrapper for throttling the upscale process (client)
       # polling runs until the next update has been called.
       def wait_for_update!
         return true if updated_since_last_activity?
@@ -104,7 +103,7 @@ module Sidekiq
         true
       end
 
-      # wrapper for polling the downscale process (server)
+      # wrapper for monitoring the downscale process (server)
       # polling runs until an update returns zero dynos.
       def wait_for_shutdown!
         return false if throttled?
@@ -112,8 +111,7 @@ module Sidekiq
         sync_attributes
         return false if throttled?
 
-        dynos = update!
-        dynos.zero? && fulfills_uptime?
+        update!.zero?
       end
 
       def update!(current=nil, target=nil)
@@ -151,7 +149,7 @@ module Sidekiq
         end
 
         # downscale
-        if quieting? && fulfills_quietdown? && fulfills_uptime?
+        if quieting? && fulfills_quietdown?
           return set_dyno_count!(@quieted_to)
         end
 
@@ -185,9 +183,6 @@ module Sidekiq
         cache = {}
         if attrs.key?(:dynos)
           cache['dynos'] = @dynos = attrs[:dynos]
-
-          @started_at = dynos && dynos > 0 ? (@started_at || attrs[:started_at] || Time.now.utc) : nil
-          cache['started_at'] = @started_at ? @started_at.to_i : nil
         end
         if attrs.key?(:quieted_to)
           cache['quieted_to'] = @quieted_to = attrs[:quieted_to]
@@ -213,10 +208,9 @@ module Sidekiq
       def sync_attributes
         if cache = ::Sidekiq.redis { |c| c.hgetall(cache_key) }
           @dynos = cache['dynos'] ? cache['dynos'].to_i : 0
-          @updated_at = cache['updated_at'] ? Time.at(cache['updated_at'].to_i).utc : nil
-          @started_at = cache['started_at'] ? Time.at(cache['started_at'].to_i).utc : nil
           @quieted_to = cache['quieted_to'] ? cache['quieted_to'].to_i : nil
           @quieted_at = cache['quieted_at'] ? Time.at(cache['quieted_at'].to_i).utc : nil
+          @updated_at = cache['updated_at'] ? Time.at(cache['updated_at'].to_i).utc : nil
           return true
         end
         false

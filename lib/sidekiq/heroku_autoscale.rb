@@ -22,14 +22,13 @@ module Sidekiq
         # configure sidekiq queue server
         Sidekiq.configure_server do |config|
           config.on(:startup) do
-            puts 'server startup'
             dyno_name = ENV['DYNO']
             next unless dyno_name
 
             process = @app.process_by_name(dyno_name.split('.').first)
             next unless process
 
-            Process.monitor.update(process)
+            Process.runscale(process)
           end
 
           config.server_middleware do |chain|
@@ -44,6 +43,10 @@ module Sidekiq
 
         # configure sidekiq app client
         Sidekiq.configure_client do |config|
+          config.on(:startup) do
+            puts 'configure_client startup'
+          end
+
           config.client_middleware do |chain|
             chain.add(Middleware, @app)
           end

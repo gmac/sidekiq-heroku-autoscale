@@ -12,9 +12,9 @@ module Sidekiq
         process = @app.process_for_queue(queue)
 
         if ::Sidekiq.server?
-          Process.monitor.update(process)
+          Process.runscale(process)
         else
-          Process.throttle.update(process)
+          Process.upscale(process)
         end
       end
     end
