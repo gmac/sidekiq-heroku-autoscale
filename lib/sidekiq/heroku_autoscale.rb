@@ -22,6 +22,7 @@ module Sidekiq
         # configure sidekiq queue server
         Sidekiq.configure_server do |config|
           config.on(:startup) do
+            puts 'configure_server startup'
             dyno_name = ENV['DYNO']
             next unless dyno_name
 
