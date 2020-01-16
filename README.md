@@ -1,30 +1,23 @@
 # sidekiq-heroku-autoscale
 
-This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to be started, stopped, and scaled based on job workload. Why? Because running non-stop Sidekiq dynos on Heroku may rack up unnecessary costs for apps with modest needs.
+This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to be started, stopped, and scaled based on job workload. Why? Because running non-stop Sidekiq dynos on Heroku may rack up unnecessary costs for apps with modest background processing needs.
 
-This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this tool borrows a significant foundation from autoscaler, it takes a new approach on many of the core operations surrounding scale transitions. persistence and durability. It also maintains a cache of data that supports a monitoring UI.
+This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this tool borrows a significant foundation from autoscaler, it deviates on the core operations involving throttling and scale transitions.
 
 ## How it works
 
-First, nomenclature:
+This plugin operates by tapping into Sidekiq middleware and startup hooks.
 
-- Process [Type] is the _definition_ of a process, ie: a line in your Procfile... "worker: sidekiq -T 25"
-- Dyno is an _instance_ of a process type.
+- Whenever a job is queued or a server is started, the appropriate process manager is called on to adjust its scale. Adjustments are throttled (across processes) so that the Heroku API is only called once every N seconds – 10 by default.
 
-This plugin works by tapping into Sidekiq middleware and startup hooks.
+- When workload demands more dynos, scale will adjusted upward directly to target.
 
-- Whenever a job is queued or a server is started, the appropraite process manager is called on to adjust its scale. Adjustments are throttled so that the Heroku API is only called once every 10 seconds (customizable).
-
-- When workload demands more dynos than are currently running, scale will be immedaitely adjusted to meet the need.
-
-- As workload diminishes, scale will slowly be adjusted downward one dyno at a time. When downscaling, the highest-numbered dyno (ex `worker.2` over `worker.1`) will be quieted and then removed from the pool. This slow backoff moderates wild fluctuations in queue size.
-
-
+- As workload diminishes, scale will be adjusted downward one dyno at a time. When downscaling a process, the highest numbered dyno (ex: `worker.1`, `worker.2`, etc...) will be quieted and then removed from the pool. This combines Heroku's [autoscaling logic](https://devcenter.heroku.com/articles/scaling#autoscaling-logic) with Sidekiq's quieting strategy.
 
 ## Gem installation
 
 ```ruby
-gem sidekiq-heroku-autoscale
+gem 'sidekiq-heroku-autoscale'
 ```
 
 If you're not using Rails, you'll need to require `sidekiq-heroku-autoscale` after `sidekiq`.
@@ -37,18 +30,23 @@ You'll need to generate a Heroku platform API token that enables your app to adj
 heroku authorizations:create
 ```
 
-Copy the `Token` value and add it along with your app's name as environment variables in your app:
+Copy the `Token` value and add it along with your app's name as environment variables of your app:
 
 ```shell
 SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN=<token>
 SIDEKIQ_HEROKU_AUTOSCALE_APP=<app-name>
 ```
 
-The Heroku Autoscaler plugin will automatically check for these two environment variables.
+The Heroku Autoscaler plugin will automatically check for these two environment variables. You'll also find some setup suggestions in Sidekiq's [Heroku deployment](https://github.com/mperham/sidekiq/wiki/Deployment#heroku) docs. Specifically, you'll want to include the `-t 25` option in your Procfile's Sidekiq command to maximize process quietdown time:
+
+```shell
+web: bundle exec rails start
+worker: bundle exec sidekiq -t 25
+```
 
 ## Plugin config
 
-Next, setup a configuration file for the Heroku Autoscale gem. YAML works well. A simple configuration with one `worker` process type monitoring all Sidekiq queues that simply starts/stops in the presence of jobs looks like this:
+Now add a configuration file for the Heroku Autoscale plugin. YAML works well. A simple configuration with one `worker` process that monitors all Sidekiq queues and starts/stops in the presence of jobs looks like this:
 
 **config/sidekiq_heroku_autoscale.yml**
 
@@ -63,8 +61,6 @@ processes:
     scale:
       mode: binary
       max_workers: 1
-    throttle: 10
-    quiet_buffer: 10
 ```
 
 Then, add an initializer that hands your configuration off to the plugin:
@@ -92,8 +88,8 @@ processes:
     scale:
       mode: binary
       max_workers: 2
-    throttle: 10
-    quiet_buffer: 10
+    throttle: 5
+    quiet_buffer: 15
 
   second:
     system:
@@ -109,16 +105,17 @@ processes:
 ```
 
 **Options**
-- `api_token:` prefer the ENV variable whenever possible.
-- `app_name:` name of the managed Heroku app.
-- `processes:` a list of Heroku process types and specific options for each. For example, `worker` or `sidekiq`.
-- `process.system.watch_queues:` a list of Sidekiq queues to watch for work, or `*` for all queues. To avoid conflicts, queue names MUST be mutually exclusive. That means queue names can only be listed once across all processes, and that select queue names cannot be combined with `*`-all.
-- `process.system.include_retrying:` specifies if the Sidekiq retry set should be included while assessing workload.
+
+- `api_token:` optional, same as SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN. Always prefer the ENV variable, or dynamically insert this.
+- `app_name:` optional, same as SIDEKIQ_HEROKU_AUTOSCALE_APP.
+- `processes:` a list of Heroku process types named in your Procfile. For example, `worker` or `sidekiq`.
+- `process.system.watch_queues:` a list of Sidekiq queues to watch for work, or `*` for all queues. Queue names must be mutually exclusive to avoid collisions. That means a queue name may only appear once across all processes, and that `*` (all) may not be combined with other names.
+- `process.system.include_retrying:` specifies if the Sidekiq retry set should be included while assessing workload. Watching retries may cause in undesirable levels of uptime.
 - `process.system.include_scheduled:` specifies if the Sidekiq scheduled set should be included while assessing workload. Watching scheduled jobs may cause undesirable levels of idle uptime. Also, no new jobs will be scheduled unless Sidekiq is running.
 - `process.scale.mode:` accepts "binary" (on/off) or "linear" (scaled to workload).
 - `process.scale.max_workers:` maximum allowed concurrent dynos. In binary mode, this will be the fixed operating capacity.
-- `process.throttle:` number of seconds to throttle between revaluating scale. The default is 10, meaning we'll only hit the Heroku API once every ten seconds, regardless of how many jobs are queued during that time.
-- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. You should also extend the cooldown period using `sidekiq -T 25`. Note that no new upscaling will occur during a quiet buffer.
+- `process.throttle:` number of seconds to throttle between scale evaluations. The default is 10, meaning we'll only hit the Heroku API once every ten seconds, regardless of how many jobs are queued during that time.
+- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note that no other scale transitions (up or down) are allowed during a quiet buffer.
 
 ## Tests
 
