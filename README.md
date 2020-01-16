@@ -1,8 +1,25 @@
 # sidekiq-heroku-autoscale
 
-Running non-stop [Sidekiq](https://github.com/mperham/sidekiq) worker dynos on Heroku may rack up unnecessary costs for apps with modest background processing needs. This Sidekiq plugin allows Heroku dynos to be started, stopped, and scaled based on job workload.
+This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to be started, stopped, and scaled based on job workload. Why? Because running non-stop Sidekiq dynos on Heroku may rack up unnecessary costs for apps with modest needs.
 
-This gem is a rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this tool borrows a significant foundation from autoscaler, it takes new approaches to configuration, polling, and downscaling. It also maintains a cache of data that supports a monitoring UI.
+This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this tool borrows a significant foundation from autoscaler, it takes a new approach on many of the core operations surrounding scale transitions. persistence and durability. It also maintains a cache of data that supports a monitoring UI.
+
+## How it works
+
+First, nomenclature:
+
+- Process [Type] is the _definition_ of a process, ie: a line in your Procfile... "worker: sidekiq -T 25"
+- Dyno is an _instance_ of a process type.
+
+This plugin works by tapping into Sidekiq middleware and startup hooks.
+
+- Whenever a job is queued or a server is started, the appropraite process manager is called on to adjust its scale. Adjustments are throttled so that the Heroku API is only called once every 10 seconds (customizable).
+
+- When workload demands more dynos than are currently running, scale will be immedaitely adjusted to meet the need.
+
+- As workload diminishes, scale will slowly be adjusted downward one dyno at a time. When downscaling, the highest-numbered dyno (ex `worker.2` over `worker.1`) will be quieted and then removed from the pool. This slow backoff moderates wild fluctuations in queue size.
+
+
 
 ## Gem installation
 
