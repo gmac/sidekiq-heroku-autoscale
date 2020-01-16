@@ -8,9 +8,18 @@ module Sidekiq
 
       def self.registered(app)
         app.get '/dynos' do
-          #::HardWorker.perform_async(12345)
           @app = ::Sidekiq::HerokuAutoscale.app
           render(:erb, File.read(File.join(VIEW_PATH, 'index.erb')))
+        end
+
+        app.get '/dynos/queue' do
+          json({ jid: ::HardWorker.perform_async(Time.now.utc) })
+        end
+
+        app.get '/dynos/bump' do
+          @app = ::Sidekiq::HerokuAutoscale.app
+          @app.processes.each(&:wake!)
+          json({ status: true })
         end
 
         app.get '/dynos/dashboard.js' do

@@ -7,16 +7,20 @@ module Sidekiq
       end
 
       def call(worker_class, item, queue, _=nil)
-        yield
-      ensure
-        process = @app.process_for_queue(queue)
-        return unless process
+        result = yield
 
-        if ::Sidekiq.server?
-          process.monitor!
-        else
-          process.wake!
+        puts "Middleware! #{ !!::Sidekiq.server? }"
+        puts ::Sidekiq::Stats.new.queues
+
+        if process = @app.process_for_queue(queue)
+          if ::Sidekiq.server?
+            process.monitor!
+          else
+            process.wake!
+          end
         end
+
+        result
       end
     end
 

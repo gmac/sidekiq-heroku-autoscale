@@ -2,7 +2,7 @@ module Sidekiq
   module HerokuAutoscale
 
     class Process
-      WAKE_THROTTLE = PollInterval.new(:wait_for_update!, after_update: 1)
+      WAKE_THROTTLE = PollInterval.new(:wait_for_update!, before_update: 2)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
       attr_reader :client, :app_name, :name
@@ -16,8 +16,8 @@ module Sidekiq
       # @param [String] token Heroku OAuth access token
       # @param [String] app_name Heroku app_name name
       def initialize(
-        app_name: nil,
         name: 'worker',
+        app_name: nil,
         client: nil,
         system: {},
         scale: {},
@@ -54,13 +54,17 @@ module Sidekiq
       # process is polled until it has been shut down.
       def monitor!
         @active_at = Time.now.utc
-        SHUTDOWN_POLL.call(self)
+        #SHUTDOWN_POLL.call(self)
       end
 
       # checks if the system is downscaling
       # no other scaling is allowed during a cooling period
       def quieting?
         !!(@quieted_to && @quieted_at)
+      end
+
+      def shutting_down?
+        quieting? && @quieted_to.zero?
       end
 
       def fulfills_quietdown?
@@ -94,12 +98,18 @@ module Sidekiq
       # wrapper for throttling the upscale process (client)
       # polling runs until the next update has been called.
       def wait_for_update!
+        # resolve (true) when already updated by another process
+        # keep waiting (false) when:
+        # - redundant updates are called within the throttle window
+        # - the system has been fully quieted and must shutdown before upscaling
         return true if updated_since_last_activity?
-        return false if throttled?
+        return false if throttled? || shutting_down?
 
+        # first round of checks use local (process-specific) settings
+        # now hit the redis cache and double check settings from other processes
         sync_attributes
         return true if updated_since_last_activity?
-        return false if throttled?
+        return false if throttled? || shutting_down?
 
         update!
         true
@@ -117,6 +127,7 @@ module Sidekiq
       end
 
       def update!(current=nil, target=nil)
+        puts "update! (#{ name })"
         current ||= fetch_dyno_count
 
         attrs = { dynos: current, updated_at: Time.now.utc }
@@ -136,14 +147,17 @@ module Sidekiq
 
           # idle
           if current == target
+            puts "hold at #{ target }"
             return current
 
           # upscale
           elsif current < target
+            puts "upscale to #{ target }"
             return set_dyno_count!(target)
 
           # quietdown
           elsif current > target
+            puts "quiet to #{ current - 1 }"
             quietdown(current - 1)
             # do NOT return...
             # allows downscale conditions to run during the same update
@@ -173,6 +187,7 @@ module Sidekiq
       end
 
       def set_dyno_count!(count)
+        puts "Sidekiq::HerokuAutoscale adjusting to #{ count }"
         @client.formation.update(app_name, name, { quantity: count }) if @client
         set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
         count
