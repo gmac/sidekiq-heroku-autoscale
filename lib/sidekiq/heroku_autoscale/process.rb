@@ -5,12 +5,11 @@ module Sidekiq
       WAKE_THROTTLE = PollInterval.new(:wait_for_update!, before_update: 2)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
-      attr_reader :client, :app_name, :name
+      attr_reader :client, :app_name, :name, :throttle, :history
       attr_reader :queue_system, :scale_strategy
 
-      attr_accessor :throttle, :quiet_buffer
       attr_accessor :active_at, :updated_at, :quieted_at
-      attr_accessor :dynos, :quieted_to
+      attr_accessor :dynos, :quieted_to, :quiet_buffer
 
       # @param [String] name process name this scaler controls
       # @param [String] token Heroku OAuth access token
@@ -19,10 +18,11 @@ module Sidekiq
         name: 'worker',
         app_name: nil,
         client: nil,
+        throttle: 10, # 10 seconds
+        history: 3600, # 1 hour
+        quiet_buffer: 10,
         system: {},
-        scale: {},
-        throttle: 10,
-        quiet_buffer: 10
+        scale: {}
       )
         @app_name = app_name || name.to_s
         @name = name.to_s
@@ -37,6 +37,7 @@ module Sidekiq
         @quieted_to = nil
 
         @throttle = throttle
+        @history = history
         @quiet_buffer = quiet_buffer
       end
 
@@ -54,7 +55,7 @@ module Sidekiq
       # process is polled until it has been shut down.
       def monitor!
         @active_at = Time.now.utc
-        #SHUTDOWN_POLL.call(self)
+        SHUTDOWN_POLL.call(self)
       end
 
       # checks if the system is downscaling
@@ -127,7 +128,6 @@ module Sidekiq
       end
 
       def update!(current=nil, target=nil)
-        puts "update! (#{ name })"
         current ||= fetch_dyno_count
 
         attrs = { dynos: current, updated_at: Time.now.utc }
@@ -147,17 +147,16 @@ module Sidekiq
 
           # idle
           if current == target
-            puts "hold at #{ target }"
+            ::Sidekiq.logger.info("IDLE at #{ target } dynos")
             return current
 
           # upscale
           elsif current < target
-            puts "upscale to #{ target }"
             return set_dyno_count!(target)
 
           # quietdown
           elsif current > target
-            puts "quiet to #{ current - 1 }"
+            ::Sidekiq.logger.info("QUIET to #{ current - 1 } dynos")
             quietdown(current - 1)
             # do NOT return...
             # allows downscale conditions to run during the same update
@@ -187,9 +186,21 @@ module Sidekiq
       end
 
       def set_dyno_count!(count)
-        puts "Sidekiq::HerokuAutoscale adjusting to #{ count }"
+        ::Sidekiq.logger.info("SCALE to #{ count } dynos")
         @client.formation.update(app_name, name, { quantity: count }) if @client
         set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
+
+        # set a historical record at throttle interval for monitoring
+        # set another at the next history threshold to keep a running reference point
+        event_time = (Time.now.utc.to_f / @throttle).floor * @throttle
+        anchor_time = (Time.now.utc.to_f / @history).ceil * @history
+        ::Sidekiq.redis do |c|
+          c.multi do |t|
+            t.setex("#{ cache_key }:#{ event_time }", @history, count.to_s)
+            t.setex("#{ cache_key }:#{ anchor_time }", @history, count.to_s)
+          end
+        end
+
         count
       rescue StandardError => e
         ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
@@ -216,8 +227,10 @@ module Sidekiq
         del, set = cache.partition { |k, v| v.nil? }
 
         ::Sidekiq.redis do |c|
-          c.hmset(cache_key, *set.flatten) if set.any?
-          c.hdel(cache_key, *del.map(&:first)) if del.any?
+          c.multi do |t|
+            t.hmset(cache_key, *set.flatten) if set.any?
+            t.hdel(cache_key, *del.map(&:first)) if del.any?
+          end
         end
       end
 
@@ -234,7 +247,7 @@ module Sidekiq
       end
 
       def cache_key
-        [self.class.name.gsub('::', '/').downcase, app_name, name].compact.join(':')
+        [self.class.name.gsub('::', '/').downcase, app_name, name].join(':')
       end
     end
 

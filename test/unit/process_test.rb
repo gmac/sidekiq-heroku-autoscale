@@ -10,10 +10,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
   end
 
   describe 'throttled?' do
-    before do
-      @subject.throttle = 10
-    end
-
     it 'returns false when last update is blank' do
       @subject.updated_at = nil
       assert_not @subject.throttled?
@@ -208,7 +204,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
 
     it 'returns false when throttled' do
-      @subject.throttle = 10
       @subject.updated_at = Time.now.utc - 9
       assert_not @subject.wait_for_update!
     end
@@ -220,7 +215,6 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
 
     it 'returns false when a syncronized update is throttled' do
-      @subject.throttle = 10
       @subject2.set_attributes(updated_at: Time.now.utc - 9)
       assert_not @subject.wait_for_update!
       assert_equal_times @subject.updated_at, @subject2.updated_at
@@ -237,13 +231,11 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   describe 'wait_for_shutdown!' do
     it 'returns false when throttled' do
-      @subject.throttle = 10
       @subject.updated_at = Time.now.utc - 9
       assert_not @subject.wait_for_shutdown!
     end
 
     it 'returns false when a syncronized update is throttled' do
-      @subject.throttle = 10
       @subject.updated_at = Time.now.utc - 15
       @subject2.set_attributes(updated_at: Time.now.utc - 9)
 

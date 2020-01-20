@@ -1,6 +1,6 @@
 api_token: n0th1ngt0s33h3r3
 app_name: test-app
-sidekiq_autostart: true
+throttle: 10
 processes:
   first:
     system:
@@ -12,7 +12,6 @@ processes:
     scale:
       mode: binary
       max_workers: 2
-    throttle: 15
     quiet_buffer: 15
 
   second:
@@ -26,5 +25,4 @@ processes:
       max_workers: 5
       worker_capacity: 50
       min_factor: 1
-    throttle: 20
     quiet_buffer: 20

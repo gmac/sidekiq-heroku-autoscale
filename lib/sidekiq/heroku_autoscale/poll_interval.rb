@@ -20,12 +20,10 @@ module Sidekiq
           begin
             while @requests.size > 0
               sleep(@before_update) if @before_update > 0
-              puts "polling... #{ @requests.size }"
               @requests.reject! { |n, p| p.send(@method_name) }
               sleep(@after_update) if @after_update > 0
             end
           ensure
-            puts "stop polling"
             @thread = nil
           end
         end
