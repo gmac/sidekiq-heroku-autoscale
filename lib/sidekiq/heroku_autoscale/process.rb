@@ -5,28 +5,21 @@ module Sidekiq
       WAKE_THROTTLE = PollInterval.new(:wait_for_update!, before_update: 2)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
-      attr_reader :client, :app_name, :name, :throttle, :history
+      attr_reader :app, :name
       attr_reader :queue_system, :scale_strategy
 
       attr_accessor :active_at, :updated_at, :quieted_at
-      attr_accessor :dynos, :quieted_to, :quiet_buffer
+      attr_accessor :dynos, :quieted_to, :quiet_buffer, :throttle
 
-      # @param [String] name process name this scaler controls
-      # @param [String] token Heroku OAuth access token
-      # @param [String] app_name Heroku app_name name
       def initialize(
+        app:,
         name: 'worker',
-        app_name: nil,
-        client: nil,
-        throttle: 10, # 10 seconds
-        history: 3600, # 1 hour
         quiet_buffer: 10,
         system: {},
         scale: {}
       )
-        @app_name = app_name || name.to_s
+        @app = app
         @name = name.to_s
-        @client = client
         @queue_system = QueueSystem.new(system)
         @scale_strategy = ScaleStrategy.new(scale)
 
@@ -36,9 +29,17 @@ module Sidekiq
         @quieted_at = nil
         @quieted_to = nil
 
-        @throttle = throttle
+        @throttle = app.throttle
         @history = history
         @quiet_buffer = quiet_buffer
+      end
+
+      def ping!
+        if ::Sidekiq.server?
+          monitor!
+        else
+          wake!
+        end
       end
 
       # submits the process for upscaling.
@@ -172,39 +173,15 @@ module Sidekiq
       end
 
       def fetch_dyno_count
-        if @client
-          @client.formation.list(app_name)
-            .select { |item| item['type'] == name }
-            .map { |item| item['quantity'] }
-            .reduce(0, &:+)
-        else
-          @dynos
-        end
-      rescue StandardError => e
-        ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
-        0
+        app.fetch_dyno_counts[name] || 0
       end
 
       def set_dyno_count!(count)
-        ::Sidekiq.logger.info("SCALE to #{ count } dynos")
-        @client.formation.update(app_name, name, { quantity: count }) if @client
-        set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
-
-        # set a historical record at throttle interval for monitoring
-        # set another at the next history threshold to keep a running reference point
-        event_time = (Time.now.utc.to_f / @throttle).floor * @throttle
-        anchor_time = (Time.now.utc.to_f / @history).ceil * @history
-        ::Sidekiq.redis do |c|
-          c.multi do |t|
-            t.setex("#{ cache_key }:#{ event_time }", @history, count.to_s)
-            t.setex("#{ cache_key }:#{ anchor_time }", @history, count.to_s)
-          end
+        result = app.set_dyno_count!(count) do
+          ::Sidekiq.logger.info("SCALE to #{ count } dynos")
+          set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
         end
-
-        count
-      rescue StandardError => e
-        ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
-        @dynos
+        result || @dynos
       end
 
       def set_attributes(attrs)
@@ -247,7 +224,7 @@ module Sidekiq
       end
 
       def cache_key
-        [self.class.name.gsub('::', '/').downcase, app_name, name].join(':')
+        [self.class.name.downcase, app.name, name].join(':')
       end
     end
 

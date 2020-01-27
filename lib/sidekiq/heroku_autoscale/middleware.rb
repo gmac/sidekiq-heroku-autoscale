@@ -10,11 +10,7 @@ module Sidekiq
         result = yield
 
         if process = @app.process_for_queue(queue)
-          if ::Sidekiq.server?
-            process.monitor!
-          else
-            process.wake!
-          end
+          process.ping!
         end
 
         result
