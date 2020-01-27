@@ -82,7 +82,7 @@ describe 'HerokuApp' do
     end
 
     it 'lists process names' do
-      assert_equal [:first, :second], @app.process_names
+      assert_equal %w[first second], @app.process_names
     end
 
     it 'lists queue names' do
@@ -90,8 +90,8 @@ describe 'HerokuApp' do
     end
 
     it 'gets processes by name' do
-      assert_equal 'first', @app.process_by_name(:first).name
-      assert_equal 'second', @app.process_by_name(:second).name
+      assert_equal 'first', @app.process_by_name('first').name
+      assert_equal 'second', @app.process_by_name('second').name
     end
 
     it 'gets processes by queue' do
