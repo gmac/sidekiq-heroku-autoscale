@@ -30,7 +30,8 @@ module Sidekiq
         @queue_system = QueueSystem.new(system)
         @scale_strategy = ScaleStrategy.new(scale)
 
-        @dynos = 0
+        @prev_dynos = nil
+        @dynos = nil
         @active_at = nil
         @updated_at = nil
         @quieted_at = nil
@@ -128,6 +129,7 @@ module Sidekiq
       end
 
       def update!(current=nil, target=nil)
+        @prev_dynos = @dynos
         current ||= fetch_dyno_count
 
         attrs = { dynos: current, updated_at: Time.now.utc }
@@ -189,18 +191,6 @@ module Sidekiq
         ::Sidekiq.logger.info("SCALE to #{ count } dynos")
         @client.formation.update(app_name, name, { quantity: count }) if @client
         set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
-
-        # set a historical record at throttle interval for monitoring
-        # set another at the next history threshold to keep a running reference point
-        event_time = (Time.now.utc.to_f / @throttle).floor * @throttle
-        anchor_time = (Time.now.utc.to_f / @history).ceil * @history
-        ::Sidekiq.redis do |c|
-          c.multi do |t|
-            t.setex("#{ cache_key }:#{ event_time }", @history, count.to_s)
-            t.setex("#{ cache_key }:#{ anchor_time }", @history, count.to_s)
-          end
-        end
-
         count
       rescue StandardError => e
         ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
@@ -224,12 +214,23 @@ module Sidekiq
           cache['updated_at'] = @updated_at ? @updated_at.to_i : nil
         end
 
-        del, set = cache.partition { |k, v| v.nil? }
-
         ::Sidekiq.redis do |c|
-          c.multi do |t|
-            t.hmset(cache_key, *set.flatten) if set.any?
-            t.hdel(cache_key, *del.map(&:first)) if del.any?
+          c.pipelined do
+            # set new keys, delete expired keys
+            del, set = cache.partition { |k, v| v.nil? }
+            c.hmset(cache_key, *set.flatten) if set.any?
+            c.hdel(cache_key, *del.map(&:first)) if del.any?
+
+            if attrs.key?(:dynos)
+              # set a dyno count history marker
+              epoch_time = attrs[:now] || Time.now.utc
+              event_time = (epoch_time.to_f / @throttle).floor * @throttle
+              history_time = (epoch_time.to_f / @history).floor * @history
+              history_key = "#{ cache_key }:#{ history_time }"
+
+              c.hset(history_key, event_time.to_s, [@prev_dynos, @dynos].compact.join(','))
+              c.expire(history_key, @history * 2)
+            end
           end
         end
       end

@@ -23,6 +23,7 @@ describe 'HerokuApp' do
       assert_not first.queue_system.include_scheduled
       assert_equal 'binary', first.scale_strategy.mode
       assert_equal 2, first.scale_strategy.max_workers
+      assert_equal 3600, first.history
       assert_equal 15, first.throttle
       assert_equal 15, first.quiet_buffer
 
@@ -34,7 +35,8 @@ describe 'HerokuApp' do
       assert_equal 5, second.scale_strategy.max_workers
       assert_equal 50, second.scale_strategy.worker_capacity
       assert_equal 1, second.scale_strategy.min_factor
-      assert_equal 20, second.throttle
+      assert_equal 3600, second.history
+      assert_equal 15, second.throttle
       assert_equal 20, second.quiet_buffer
     end
 
@@ -98,6 +100,28 @@ describe 'HerokuApp' do
       assert_equal 'first', @app.process_for_queue('low').name
       assert_equal 'second', @app.process_for_queue('med').name
       assert_equal 'second', @app.process_for_queue('high').name
+    end
+  end
+
+  describe 'dyno history' do
+    before do
+      @app = @subject.new({
+        history: 360,
+        processes: {
+          first: { system: { watch_queues: %w[low] } },
+          second: { system: { watch_queues: %w[high] } }
+        }
+      })
+    end
+
+    it 'does stuff' do
+      epoch = Time.now.utc
+      @app.process_by_name('first').set_attributes(dynos: 0, now: epoch - 370)
+      @app.process_by_name('first').set_attributes(dynos: 0, now: epoch - 20)
+      @app.process_by_name('first').set_attributes(dynos: 1, now: epoch - 10)
+      @app.process_by_name('second').set_attributes(dynos: 1, now: epoch - 10)
+
+      @app.dyno_history(now: epoch)
     end
   end
 end

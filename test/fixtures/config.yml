@@ -1,6 +1,7 @@
 api_token: n0th1ngt0s33h3r3
 app_name: test-app
-throttle: 10
+throttle: 15
+history: 3600
 processes:
   first:
     system:
