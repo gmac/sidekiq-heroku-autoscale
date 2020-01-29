@@ -1,4 +1,4 @@
-# sidekiq-heroku-autoscale
+# Sidekiq Heroku Autoscale plugin
 
 This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to be started, stopped, and scaled based on job workload. Why? Because running non-stop Sidekiq dynos on Heroku can rack up unnecessary costs for apps with modest background processing needs.
 
@@ -118,10 +118,12 @@ processes:
 - `process.scale.mode:` accepts "binary" (on/off) or "linear" (scaled to workload).
 - `process.scale.max_dynos:` maximum allowed concurrent dynos. In binary mode, this will be the fixed operating capacity. In linear mode, this will be the maximum extent that dynos may scale up to.
 - `process.scale.workers_per_dyno:` Linear mode only. This specifies the anticipated workforce per dyno to calculate scale around. This should generally align with Sidekiq's `concurrency` setting.
-- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note: during the quiet buffer a dyno has been decomissioned but remains in the formation; therefore, no other scale adjustments (up or down) are allowed until the decomissioned dyno has been dropped. Be accordingly judicious.
+- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note: during the quiet buffer a dyno has been quieted (decomissioned) but remains in the formation; therefore, no other scale adjustments (up or down) are allowed until the quieted dyno has been dropped. Be accordingly judicious with this buffer.
 
 
 ## Tests
+
+Nothing sophisticated here...
 
 ```bash
 # Start a redis server
@@ -143,4 +145,4 @@ bundle exec rake test
 
 ## Licence
 
-Sidekiq Heroku Autoscale is released under the [MIT license](https://opensource.org/licenses/MIT).
+Sidekiq Heroku Autoscale plugin is released under the [MIT license](https://opensource.org/licenses/MIT).
