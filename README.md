@@ -112,14 +112,17 @@ processes:
 
 - `api_token:` optional, same as `SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN`. Always prefer the ENV variable, or dynamically insert this.
 - `app_name:` optional, same as `SIDEKIQ_HEROKU_AUTOSCALE_APP`.
+- `throttle:` number of seconds to throttle between scale adjustments. The default is 10, so the Heroku API will only be hit once every ten seconds regardless of how many jobs are queued during that timeframe. This value also sets the tick frequency on the web UI graph.
+- `history:` number of seconds to display history of in the web UI. The default is 3600, or 1 hour. The history graph renders `history / throttle` ticks, so 3600 seconds of history on a 10 second throttle produces 360 data points. Therefore, it's best to keep these settings in modest proportions to each another. You'll probably be sad if you try to store days or weeks of history.
 - `processes:` a list of Heroku process types named in your Procfile. For example, `worker` or `sidekiq`.
 - `process.system.watch_queues:` a list of Sidekiq queues to watch for work, or `*` for all queues. Queue names must be mutually exclusive to avoid collisions. That means a queue name may only appear once across all processes, and that `*` (all) may not be combined with other queue names.
 - `process.system.include_retrying:` specifies if the Sidekiq retry set should be included while assessing workload. Watching retries may cause in undesirable levels of uptime.
 - `process.system.include_scheduled:` specifies if the Sidekiq scheduled set should be included while assessing workload. Watching scheduled jobs may cause undesirable levels of idle uptime. Also, no new jobs will be scheduled unless Sidekiq is running.
 - `process.scale.mode:` accepts "binary" (on/off) or "linear" (scaled to workload).
-- `process.scale.max_dynos:` maximum allowed concurrent dynos. In binary mode, this will be the fixed operating capacity.
-- `process.throttle:` number of seconds to throttle between scale evaluations. The default is 10, meaning we'll only hit the Heroku API once every ten seconds, regardless of how many jobs are queued during that time.
-- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note that no other scale transitions (up or down) are allowed during a quiet buffer because an active dyno has been decomissioned and must be removed.
+- `process.scale.max_dynos:` maximum allowed concurrent dynos. In binary mode, this will be the fixed operating capacity. In linear mode, this will be the maximum extent that dynos may scale up to.
+- `process.scale.workers_per_dyno:` Linear mode only. This specifies the anticipated workforce per dyno to calculate scale around. This should generally align with Sidekiq's `concurrency` setting.
+- `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note: during the quiet buffer a dyno has been decomissioned but remains in the formation; therefore, no other scale adjustments (up or down) are allowed until the decomissioned dyno has been dropped. Be accordingly judicious.
+
 
 ## Tests
 
