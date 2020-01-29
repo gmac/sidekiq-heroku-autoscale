@@ -3,6 +3,7 @@ require 'yaml'
 
 describe 'HerokuApp' do
   before do
+    Sidekiq.redis {|c| c.flushdb }
     ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN'] = 'humd1ng3r'
     ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP'] = 'testing-app'
     @subject = ::Sidekiq::HerokuAutoscale::HerokuApp
@@ -103,10 +104,11 @@ describe 'HerokuApp' do
     end
   end
 
-  describe 'dyno history' do
+  describe 'history_stats' do
     before do
       @app = @subject.new({
-        history: 360,
+        history: 100,
+        throttle: 10,
         processes: {
           first: { system: { watch_queues: %w[low] } },
           second: { system: { watch_queues: %w[high] } }
@@ -114,14 +116,29 @@ describe 'HerokuApp' do
       })
     end
 
-    it 'does stuff' do
-      epoch = Time.now.utc
-      @app.process_by_name('first').set_attributes(dynos: 0, now: epoch - 370)
-      @app.process_by_name('first').set_attributes(dynos: 0, now: epoch - 20)
-      @app.process_by_name('first').set_attributes(dynos: 1, now: epoch - 10)
-      @app.process_by_name('second').set_attributes(dynos: 1, now: epoch - 10)
+    it 'generates a running history from present dynos' do
+      @app.process_by_name('second').dynos = 1
+      stats = @app.history_stats
 
-      @app.dyno_history(now: epoch)
+      assert_equal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], stats['first'].map { |tick| tick[1] }
+      assert_equal [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], stats['second'].map { |tick| tick[1] }
+    end
+
+    it 'generates a running history from logged data points' do
+      epoch = Time.now.utc
+      @app.process_by_name('first').set_attributes(dynos: 1, history_at: epoch - 110)
+      @app.process_by_name('first').set_attributes(dynos: 1, history_at: epoch - 80)
+      @app.process_by_name('first').set_attributes(dynos: 0, history_at: epoch - 70)
+      @app.process_by_name('first').set_attributes(dynos: 0, history_at: epoch - 40)
+      @app.process_by_name('first').set_attributes(dynos: 1, history_at: epoch - 30)
+
+      @app.process_by_name('second').set_attributes(dynos: 1, history_at: epoch - 110)
+      @app.process_by_name('second').set_attributes(dynos: 2, history_at: epoch - 50)
+      @app.process_by_name('second').set_attributes(dynos: 0, history_at: epoch - 40)
+
+      stats = @app.history_stats(epoch)
+      assert_equal [1, 1, 1, 0, 0, 0, 0, 1, 1, 1], stats['first'].map { |tick| tick[1] }
+      assert_equal [1, 1, 1, 1, 1, 2, 0, 0, 0, 0], stats['second'].map { |tick| tick[1] }
     end
   end
 end

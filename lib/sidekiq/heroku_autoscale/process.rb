@@ -30,8 +30,7 @@ module Sidekiq
         @queue_system = QueueSystem.new(system)
         @scale_strategy = ScaleStrategy.new(scale)
 
-        @prev_dynos = nil
-        @dynos = nil
+        @dynos = 0
         @active_at = nil
         @updated_at = nil
         @quieted_at = nil
@@ -129,7 +128,6 @@ module Sidekiq
       end
 
       def update!(current=nil, target=nil)
-        @prev_dynos = @dynos
         current ||= fetch_dyno_count
 
         attrs = { dynos: current, updated_at: Time.now.utc }
@@ -190,7 +188,7 @@ module Sidekiq
       def set_dyno_count!(count)
         ::Sidekiq.logger.info("SCALE to #{ count } dynos")
         @client.formation.update(app_name, name, { quantity: count }) if @client
-        set_attributes(dynos: count, quieted_to: nil, quieted_at: nil)
+        set_attributes(dynos: count, quieted_to: nil, quieted_at: nil, history_at: Time.now.utc)
         count
       rescue StandardError => e
         ::Sidekiq::HerokuAutoscale.exception_handler.call(e)
@@ -199,6 +197,7 @@ module Sidekiq
 
       def set_attributes(attrs)
         cache = {}
+        prev_dynos = @dynos
         if attrs.key?(:dynos)
           cache['dynos'] = @dynos = attrs[:dynos]
         end
@@ -221,14 +220,13 @@ module Sidekiq
             c.hmset(cache_key, *set.flatten) if set.any?
             c.hdel(cache_key, *del.map(&:first)) if del.any?
 
-            if attrs.key?(:dynos)
+            if attrs[:history_at]
               # set a dyno count history marker
-              epoch_time = attrs[:now] || Time.now.utc
-              event_time = (epoch_time.to_f / @throttle).floor * @throttle
-              history_time = (epoch_time.to_f / @history).floor * @history
-              history_key = "#{ cache_key }:#{ history_time }"
+              event_time = (attrs[:history_at].to_f / @throttle).floor * @throttle
+              history_page = (attrs[:history_at].to_f / @history).floor * @history
+              history_key = "#{ cache_key }:#{ history_page }"
 
-              c.hset(history_key, event_time.to_s, [@prev_dynos, @dynos].compact.join(','))
+              c.hmset(history_key, (event_time - @throttle).to_s, prev_dynos, event_time.to_s, @dynos)
               c.expire(history_key, @history * 2)
             end
           end

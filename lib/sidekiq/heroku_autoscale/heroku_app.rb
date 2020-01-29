@@ -65,24 +65,16 @@ module Sidekiq
         @processes_by_queue[queue_name] || @processes_by_queue['*']
       end
 
-      def stats
-        # base_time = (Time.now.utc.to_f / @throttle).floor * @throttle - @history
-        # times = Array.new(@history / @throttle).each_with_index.map { |i| base_time + 10 * i }
-        # keys =
-
-        @processes_by_name.values.each_with_object({}) { |p, m| m[p.name] = p.dynos }
-      end
-
-      def dyno_history(now: Time.now.utc)
+      def history_stats(now=Time.now.utc)
         # calculate a series time to anchor graph ticks on
         # the series snaps to thresholds of N (throttle duration)
         series_time = (now.to_f / @throttle).floor * @throttle
         num_ticks = (@history / @throttle).floor
         first_tick = series_time - @throttle * num_ticks
 
-        # ticks is an array of timestamps to plot
+        # ticks is a hash of timestamp keys to plot
         all_ticks = Array.new(num_ticks)
-          .each_with_index.map { |v, i| first_tick + @throttle * i }
+          .each_with_index.map { |v, i| (first_tick + @throttle * i).to_s }
           .each_with_object({}) { |tick, memo| memo[tick] = nil }
 
         # get current and previous history collections for each process
@@ -98,31 +90,34 @@ module Sidekiq
           end
         end
 
-        # flatten all history pages into a single hash
-        history_by_name = {}
+        history_by_process = {}
         history_pages.each_slice(2).each_with_index do |(a, b), i|
           process = processes[i]
 
-          ticks = a.merge!(b)
-            .transform_keys! { |k| k.to_i }
-            .reject { |k, v| k < first_tick }
-            #.transform_values! { |v| v.to_i }
-
+          # flatten all history pages into a single collection
           ticks = all_ticks
-            .merge(ticks)
-            .sort_by { |k| k }
+            .merge(a.merge!(b))
+            .map { |k, v| [k.to_i, v ? v.to_i : nil] }
+            .sort_by { |tick| tick[0] }
 
-          value = ticks.detect { |(k, v)| !v.nil? }
-          value = value ? value.last : process.dynos
-          ticks.each do |tick|
+          # separate the older stats from the current history timeframe
+          past_ticks, present_ticks = ticks.partition { |tick| tick[0] < first_tick }
+
+          # select a running value starting point
+          # run from the end of past history, or beginning of present history, or current dynos
+          value = past_ticks.last || present_ticks.detect { |tick| !!tick[1] }
+          value = value ? value[1] : process.dynos
+
+          # assign a running value across all ticks
+          present_ticks.each do |tick|
             tick[1] ||= value
             value = tick[1]
           end
 
-          history_by_name[process.name] = ticks
+          history_by_process[process.name] = present_ticks
         end
 
-        puts history_by_name
+        history_by_process
       end
     end
 

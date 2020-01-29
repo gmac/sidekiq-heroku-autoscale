@@ -74,6 +74,18 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
     end
   end
 
+  describe 'shutting_down?' do
+    it 'true when quieted to zero' do
+      @subject.quieted_to = 1
+      @subject.quieted_at = Time.now.utc
+      assert @subject.quieting?
+      assert_not @subject.shutting_down?
+
+      @subject.quieted_to = 0
+      assert @subject.shutting_down?
+    end
+  end
+
   describe 'fulfills_quietdown?' do
     it 'returns false without a quietdown time' do
       @subject.quieted_at = nil
