@@ -12,7 +12,7 @@ processes:
       include_scheduled: false
     scale:
       mode: binary
-      max_workers: 2
+      max_dynos: 2
     quiet_buffer: 15
 
   second:
@@ -23,7 +23,7 @@ processes:
       include_scheduled: false
     scale:
       mode: linear
-      max_workers: 5
-      worker_capacity: 50
+      max_dynos: 5
+      workers_per_dyno: 50
       min_factor: 1
     quiet_buffer: 20

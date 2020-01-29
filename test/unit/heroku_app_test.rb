@@ -23,7 +23,7 @@ describe 'HerokuApp' do
       assert_not first.queue_system.include_retrying
       assert_not first.queue_system.include_scheduled
       assert_equal 'binary', first.scale_strategy.mode
-      assert_equal 2, first.scale_strategy.max_workers
+      assert_equal 2, first.scale_strategy.max_dynos
       assert_equal 3600, first.history
       assert_equal 15, first.throttle
       assert_equal 15, first.quiet_buffer
@@ -33,8 +33,8 @@ describe 'HerokuApp' do
       assert_equal 'second', second.name
       assert_equal %w[high], second.queue_system.watch_queues
       assert_equal 'linear', second.scale_strategy.mode
-      assert_equal 5, second.scale_strategy.max_workers
-      assert_equal 50, second.scale_strategy.worker_capacity
+      assert_equal 5, second.scale_strategy.max_dynos
+      assert_equal 50, second.scale_strategy.workers_per_dyno
       assert_equal 1, second.scale_strategy.min_factor
       assert_equal 3600, second.history
       assert_equal 15, second.throttle
