@@ -2,21 +2,17 @@
 
 This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to be started, stopped, and scaled based on job workload. Why? Because running non-stop Sidekiq dynos on Heroku can rack up unnecessary costs for apps with modest background processing needs.
 
-This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this plugin borrows many foundation concepts from _autoscaler_, it rewrites core operations to address several logistical concerns and enable reporting through a web UI. Key differences:
-
-- Updates scale at client/server startup (vs middleware-only).
-- Only quiets dynos that are about to be dropped.
-- Throttles synchronized updates across processes.
+This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this plugin borrows many foundation concepts from _autoscaler_, it rewrites core operations to address several logistical concerns and enable reporting through a web UI.
 
 ## How it works
 
 This plugin operates by tapping into Sidekiq startup hooks and middleware.
 
-- Whenever a server is started or a job is queued, the appropriate process manager is called on to adjust its scale. Adjustments are throttled across processes so that the Heroku API is only called once every N seconds – 10 by default.
+- Whenever a server is started or a job is queued, the appropriate process manager is called on to adjust its scale. Adjustments are throttled across process instances (dynos) so that the Heroku API is only called once every N seconds – 10 by default.
 
-- When workload demands more dynos, scale will adjust directly upward to target.
+- When workload demands more dynos, scale will adjust directly upward to target capacity.
 
-- As workload diminishes, scale will be adjusted downward one dyno at a time. When downscaling a process, the highest numbered dyno (ex: `worker.1`, `worker.2`, etc...) will be quieted and then removed from the pool. This combines Heroku's [autoscaling logic](https://devcenter.heroku.com/articles/scaling#autoscaling-logic) with Sidekiq's quieting strategy.
+- As workload diminishes, scale will adjust downward one dyno at a time. When downscaling a process, the highest numbered dyno (ex: `worker.1`, `worker.2`, etc...) will be quieted and then removed from the formation. This combines Heroku's [autoscaling logic](https://devcenter.heroku.com/articles/scaling#autoscaling-logic) with Sidekiq's [quieting strategy](https://github.com/mperham/sidekiq/wiki/Signals#tstp).
 
 ## Gem installation
 
@@ -50,7 +46,7 @@ worker: bundle exec sidekiq -t 25
 
 ## Plugin config
 
-Add a configuration file for the Heroku Autoscale plugin. YAML works well. A simple configuration with one `worker` process that monitors all Sidekiq queues and starts/stops in the presence of jobs looks like this:
+Add a configuration file for the Heroku Autoscale plugin. YAML works well. A simple configuration with one `worker` process (named in Procfile) that monitors all Sidekiq queues and starts/stops in the presence of jobs looks like this:
 
 **config/sidekiq_heroku_autoscale.yml**
 
@@ -67,7 +63,7 @@ processes:
       max_dynos: 1
 ```
 
-Then, add an initializer that hands your configuration off to the plugin:
+Then, add an initializer to hand your configuration off to the plugin:
 
 **config/initializers/sidekiq.rb**
 
@@ -81,6 +77,8 @@ A more advanced configuration with multiple process types that watch specific qu
 ```yml
 api_token: <optional - for dynamic insertion only!>
 app_name: test-app
+throttle: 20
+history: 7200
 processes:
   first:
     system:
@@ -92,7 +90,6 @@ processes:
     scale:
       mode: binary
       max_dynos: 2
-    throttle: 5
     quiet_buffer: 15
 
   second:
@@ -104,11 +101,11 @@ processes:
     scale:
       mode: linear
       max_dynos: 5
-      workers_per_dyno: 50
+      workers_per_dyno: 20
       min_factor: 1
 ```
 
-**Options**
+**Config Options**
 
 - `api_token:` optional, same as `SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN`. Always prefer the ENV variable, or dynamically insert this.
 - `app_name:` optional, same as `SIDEKIQ_HEROKU_AUTOSCALE_APP`.
