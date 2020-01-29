@@ -60,10 +60,6 @@ module Sidekiq
         total_work > 0
       end
 
-      def idle?
-        !has_work?
-      end
-
       # When scaling down workers, heroku stops the one with the highest number...
       # from https://stackoverflow.com/questions/25215334/scale-down-specific-heroku-worker-dynos
       def quietdown!(scale)

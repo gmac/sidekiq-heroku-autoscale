@@ -5,15 +5,12 @@ module Sidekiq
       WAKE_THROTTLE = PollInterval.new(:wait_for_update!, before_update: 2)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
-      attr_reader :client, :app_name, :name, :throttle, :history
+      attr_reader :app_name, :name, :throttle, :history
       attr_reader :queue_system, :scale_strategy
 
       attr_accessor :active_at, :updated_at, :quieted_at
       attr_accessor :dynos, :quieted_to, :quiet_buffer
 
-      # @param [String] name process name this scaler controls
-      # @param [String] token Heroku OAuth access token
-      # @param [String] app_name Heroku app_name name
       def initialize(
         name: 'worker',
         app_name: nil,
@@ -195,6 +192,7 @@ module Sidekiq
         @dynos
       end
 
+      # sets redis-cached process attributes
       def set_attributes(attrs)
         cache = {}
         prev_dynos = @dynos
@@ -233,7 +231,7 @@ module Sidekiq
         end
       end
 
-      # syncs quietdown configuration across processes
+      # syncs configuration across process instances (dynos)
       def sync_attributes
         if cache = ::Sidekiq.redis { |c| c.hgetall(cache_key) }
           @dynos = cache['dynos'] ? cache['dynos'].to_i : 0

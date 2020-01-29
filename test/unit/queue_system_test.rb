@@ -184,18 +184,16 @@ describe 'Sidekiq::HerokuAutoscale::QueueSystem' do
     end
   end
 
-  describe 'has_work? / idle?' do
+  describe 'has_work?' do
     it 'has no work while empty' do
       subject = @subject.new(watch_queues: '*')
       assert_not subject.has_work?
-      assert subject.idle?
     end
 
     it 'has work while active' do
       subject = @subject.new(watch_queues: '*')
       enqueue_jobs(%w[default])
       assert subject.has_work?
-      assert_not subject.idle?
     end
   end
 

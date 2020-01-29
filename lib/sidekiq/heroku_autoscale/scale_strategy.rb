@@ -11,8 +11,6 @@ module Sidekiq
         @min_factor = min_factor
       end
 
-      # @param [QueueSystem] system interface to the queuing system
-      # @return [Integer] target number of workers
       def call(sys)
         case @mode.to_s
         when 'linear'
@@ -27,9 +25,14 @@ module Sidekiq
       end
 
       def linear(sys)
-        total_capacity = (@max_dynos * @workers_per_dyno).to_f # total capacity of max workers
-        min_capacity = [0, @min_factor].max.to_f * @workers_per_dyno # min capacity required to scale first worker
-        min_capacity_percentage = min_capacity / total_capacity # min percentage of total capacity
+        # total capacity of max workers
+        total_capacity = (@max_dynos * @workers_per_dyno).to_f
+
+        # min capacity required to scale first worker
+        min_capacity = [0, @min_factor].max.to_f * @workers_per_dyno
+
+        # min percentage of total capacity
+        min_capacity_percentage = min_capacity / total_capacity
         requested_capacity_percentage = sys.total_work / total_capacity
 
         # Scale requested capacity taking into account the minimum required
@@ -37,10 +40,12 @@ module Sidekiq
         scale_factor = 0 if scale_factor.nan? # Handle DIVZERO
         scaled_capacity_percentage = scale_factor * total_capacity
 
-        ideal_workers = ([0, scaled_capacity_percentage].max * @max_dynos).ceil
-        minimum_workers = [sys.dynos, ideal_workers].max  # Don't scale down past number of currently engaged workers
-        maximum_workers = [minimum_workers, @max_dynos].min  # Don't scale up past number of max workers
-        [minimum_workers, maximum_workers].min
+        # don't scale down past number of currently engaged workers,
+        # and don't scale up past maximum dynos
+        ideal_dynos = ([0, scaled_capacity_percentage].max * @max_dynos).ceil
+        minimum_dynos = [sys.dynos, ideal_dynos].max
+        maximum_dynos = [minimum_dynos, @max_dynos].min
+        [minimum_dynos, maximum_dynos].min
       end
     end
 

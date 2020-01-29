@@ -48,6 +48,7 @@ module Sidekiq
           end
         end
 
+        # immedaitely wake all processes during client launch
         unless ::Sidekiq.server?
           @app.processes.each(&:wake!)
         end

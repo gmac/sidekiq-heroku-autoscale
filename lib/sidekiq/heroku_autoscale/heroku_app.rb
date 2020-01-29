@@ -13,7 +13,7 @@ module Sidekiq
         api_token = config[:api_token] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_API_TOKEN']
         @app_name = config[:app_name] || ENV['SIDEKIQ_HEROKU_AUTOSCALE_APP']
         @throttle = config[:throttle] || 10
-        @history = config[:history] || 60 * 60 * 3 # 3 hours
+        @history = config[:history] || 60 * 60 # 1 hour
         @client = api_token ? PlatformAPI.connect_oauth(api_token) : nil
 
         @processes_by_name = {}
@@ -34,7 +34,7 @@ module Sidekiq
             # a queue may only be managed by a single heroku process type (to avoid scaling conflicts)
             # thus, raise an error over duplicate queue names or when "*" isn't exclusive
             if @processes_by_queue.key?(queue_name) || @processes_by_queue.key?('*') || (queue_name == '*' && @processes_by_queue.keys.any?)
-              raise ArgumentError, 'watched queues must be exclusive to a single heroku process'
+              raise ArgumentError, 'watched queues must be exclusive to a single Heroku process type'
             end
             @processes_by_queue[queue_name] = process
           end
@@ -72,7 +72,7 @@ module Sidekiq
         num_ticks = (@history / @throttle).floor
         first_tick = series_time - @throttle * num_ticks
 
-        # ticks is a hash of timestamp keys to plot
+        # all ticks is a hash of timestamp keys to plot
         all_ticks = Array.new(num_ticks)
           .each_with_index.map { |v, i| (first_tick + @throttle * i).to_s }
           .each_with_object({}) { |tick, memo| memo[tick] = nil }
