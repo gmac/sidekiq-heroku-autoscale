@@ -1,0 +1,47 @@
+<% if @app.present? %>
+  <div class= "dashboard clearfix">
+    <h3>Heorku Dynos
+      <span class="beacon">
+        <span class="ring"></span>
+        <span class="dot"></span>
+      </span>
+    </h3>
+  </div>
+
+  <div class="row chart">
+    <div id="history" data-update-url="<%= root_path %>stats" data-history-url="<%= root_path %>dynos/live"></div>
+    <div id="history-legend"></div>
+    <script id="graph-data" type="text/json">
+      <%= JSON.generate(@app.history_stats) %>
+    </script>
+  </div>
+
+  <h5>Process types</h5>
+  <div class="table_container">
+    <table class="processes table table-hover table-bordered table-striped table-white">
+      <thead>
+        <th>Name</th>
+        <th>Active at</th>
+        <th>Quieted at</th>
+        <th>Quieted to</th>
+        <th>&nbsp;</th>
+      </thead>
+      <% @app.processes.each do |process| %>
+        <tr>
+          <td><%= process.name %></td>
+          <td><%= process.active_at.to_s %></td>
+          <td><%= process.quieted_at.to_s %></td>
+          <td><%= process.quieted_to.to_s %></td>
+          <td></td>
+        </tr>
+      <% end %>
+    </table>
+  </div>
+
+  <script type="text/javascript" src="<%= root_path %>dynos/index.js?v=<%= rand(0..9999) %>"></script>
+<% else %>
+  <div class= "dashboard clearfix">
+    <h3>Dynos</h3>
+    <p>Heroku Autoscale is not initialized.</p>
+  </div>
+<% end %>

@@ -38,6 +38,14 @@ module Sidekiq
         @quiet_buffer = quiet_buffer
       end
 
+      def ping!
+        if ::Sidekiq.server?
+          monitor!
+        else
+          wake!
+        end
+      end
+
       # submits the process for upscaling.
       # the process is polled until an update is called,
       # assuring that the process has had the opportunity to wake.
