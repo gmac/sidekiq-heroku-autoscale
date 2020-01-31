@@ -38,29 +38,30 @@ module Sidekiq
         @quiet_buffer = quiet_buffer
       end
 
-      def ping!
-        if ::Sidekiq.server?
-          monitor!
+      def status
+        if shutting_down?
+          'stopping'
+        elsif quieting?
+          'quieting'
+        elsif @dynos > 0
+          'running'
         else
-          wake!
+          'stopped'
         end
       end
 
-      # submits the process for upscaling.
-      # the process is polled until an update is called,
-      # assuring that the process has had the opportunity to wake.
-      # update calls are throttled to 5 second intervals
-      def wake!
+      # request a throttled update
+      def ping!
         @active_at = Time.now.utc
-        WAKE_THROTTLE.call(self)
-      end
-
-      # submits the process for runscaling,
-      # which spins the process either up or down.
-      # process is polled until it has been shut down.
-      def monitor!
-        @active_at = Time.now.utc
-        SHUTDOWN_POLL.call(self)
+        if ::Sidekiq.server?
+          # submit the process for runscaling (up or down)
+          # the process is polled until shutdown occurs
+          SHUTDOWN_POLL.call(self)
+        else
+          # submits the process for upscaling (wake up)
+          # the process is polled until an update is run
+          WAKE_THROTTLE.call(self)
+        end
       end
 
       # checks if the system is downscaling
@@ -132,6 +133,9 @@ module Sidekiq
         update!.zero?
       end
 
+      # update the process with live dyno count from Heroku,
+      # and then reassess workload and scale transitions.
+      # this method shouldn't be called directly... just ping! it.
       def update!(current=nil, target=nil)
         current ||= fetch_dyno_count
 
@@ -176,6 +180,7 @@ module Sidekiq
         current
       end
 
+      # gets a live dyno count from Heroku
       def fetch_dyno_count
         if @client
           @client.formation.list(app_name)
@@ -190,6 +195,7 @@ module Sidekiq
         0
       end
 
+      # sets the live dyno count on Heroku
       def set_dyno_count!(count)
         ::Sidekiq.logger.info("SCALE to #{ count } dynos")
         @client.formation.update(app_name, name, { quantity: count }) if @client

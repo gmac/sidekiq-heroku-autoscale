@@ -41,8 +41,15 @@ module Sidekiq
         end
       end
 
+      # checks if there's a live Heroku client setup
       def live?
         !!@client
+      end
+
+      # pings all processes in the application
+      # useful for requesting live updates
+      def ping!
+        processes.each(&:ping!)
       end
 
       def processes
@@ -63,6 +70,18 @@ module Sidekiq
 
       def process_for_queue(queue_name)
         @processes_by_queue[queue_name] || @processes_by_queue['*']
+      end
+
+      def stats
+        histories = history_stats
+        processes.each_with_object({}) do |process, memo|
+          memo[process.name] = {
+            dynos: process.dynos,
+            status: process.status,
+            updated: process.updated_at.to_s,
+            history: histories[process.name],
+          }
+        end
       end
 
       def history_stats(now=Time.now.utc)

@@ -11,22 +11,23 @@ module Sidekiq
         'Cache-Control' => 'public, max-age=86400'
       }.freeze
 
-      def self.registered(app)
-        app.get '/dynos' do
-          @app = ::Sidekiq::HerokuAutoscale.app
-          render(:erb, File.read(File.join(WEB_PATH, 'index.erb')))
-        end
-
-        app.get '/dynos/live' do
-          if @app = ::Sidekiq::HerokuAutoscale.app
-            @app.processes.each(&:ping!)
-            json(stats: @app.history_stats)
-          else
-            json(stats: {})
+      def self.registered(web)
+        web.get '/dynos' do
+          if app = ::Sidekiq::HerokuAutoscale.app
+            app.ping!
+            @stats = app.stats
           end
+          render(:erb, File.read(File.join(WEB_PATH, "#{ @stats ? 'index' : 'inactive' }.erb")))
         end
 
-        app.get '/dynos/index.js' do
+        web.get '/dynos/stats' do
+          if app = ::Sidekiq::HerokuAutoscale.app
+            app.ping!
+          end
+          json(stats: app ? app.stats : {})
+        end
+
+        web.get '/dynos/index.js' do
           [200, JS_HEADERS, [File.read(File.join(WEB_PATH, 'index.js'))]]
         end
       end

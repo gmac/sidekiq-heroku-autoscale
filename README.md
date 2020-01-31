@@ -4,6 +4,8 @@ This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to
 
 This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this plugin borrows many foundation concepts from _autoscaler_, it rewrites core operations to address several logistical concerns and enable reporting through a web UI.
 
+Tested with Sidekiq 6, but should be compatible with other recent Sidekiq versions.
+
 ## How it works
 
 This plugin operates by tapping into Sidekiq startup hooks and middleware.
@@ -17,6 +19,7 @@ This plugin operates by tapping into Sidekiq startup hooks and middleware.
 ## Gem installation
 
 ```ruby
+gem 'sidekiq'
 gem 'sidekiq-heroku-autoscale'
 ```
 
@@ -50,7 +53,7 @@ Add a configuration file for the Heroku Autoscale plugin. YAML works well. A sim
 
 **config/sidekiq_heroku_autoscale.yml**
 
-```yml
+```yaml
 app_name: test-app
 processes:
   worker:
@@ -74,7 +77,7 @@ Sidekiq::HerokuAutoscale.init(config)
 
 A more advanced configuration with multiple process types that watch specific queues would look like this – where `first` and `second` are two Heroku process types:
 
-```yml
+```yaml
 api_token: <optional - for dynamic insertion only!>
 app_name: test-app
 throttle: 20
@@ -120,16 +123,28 @@ processes:
 - `process.scale.workers_per_dyno:` Linear mode only. This specifies the anticipated workforce per dyno to calculate scale around. This should generally align with Sidekiq's `concurrency` setting.
 - `process.quiet_buffer:` number of seconds to quiet a dyno (stopping it from taking on new work) before downscaling its process. This buffer occurs _before_ reducing the number of dynos for a given process type. After downscale, you may configure an [additional quietdown threshold](https://github.com/mperham/sidekiq/wiki/Deployment#heroku). Note: during the quiet buffer a dyno has been quieted (decomissioned) but remains in the formation; therefore, no other scale adjustments (up or down) are allowed until the quieted dyno has been dropped. Be accordingly judicious with this buffer.
 
+## Web UI
+
+The web UI is an optional extension of Sidekiq's web UI. To activate it, just require `sidekiq/heroku_autoscale/web` after the base `sidekiq/web`, and then mount `Sidekiq::Web` as normal:
+
+```ruby
+require 'sidekiq/web'
+require 'sidekiq/heroku_autoscale/web'
+
+Rails.application.routes.draw do
+  mount Sidekiq::Web, at: '/sidekiq'
+end
+```
 
 ## Tests
 
-Nothing sophisticated here...
+Nothing fancy...
 
 ```bash
-# Start a redis server
+# start a redis server
 redis-server test/redis_test.conf
 
-# Then in another terminal window,
+# then run tests in another terminal window
 bundle exec rake test
 ```
 

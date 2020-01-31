@@ -28,7 +28,7 @@ module Sidekiq
             process = @app.process_by_name(dyno_name.split('.').first)
             next unless process
 
-            process.monitor!
+            process.ping!
           end
 
           config.server_middleware do |chain|
@@ -49,9 +49,7 @@ module Sidekiq
         end
 
         # immedaitely wake all processes during client launch
-        unless ::Sidekiq.server?
-          @app.processes.each(&:wake!)
-        end
+        @app.ping! unless ::Sidekiq.server?
 
         @app
       end
