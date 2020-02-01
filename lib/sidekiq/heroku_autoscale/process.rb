@@ -110,13 +110,13 @@ module Sidekiq
         # - redundant updates are called within the throttle window
         # - the system has been fully quieted and must shutdown before upscaling
         return true if updated_since_last_activity?
-        return false if throttled? || shutting_down?
+        return false if throttled?
 
         # first round of checks use local (process-specific) settings
         # now hit the redis cache and double check settings from other processes
         sync_attributes
         return true if updated_since_last_activity?
-        return false if throttled? || shutting_down?
+        return false if throttled?
 
         update!
         true
