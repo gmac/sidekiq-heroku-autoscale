@@ -1,6 +1,6 @@
 <div class= "dashboard clearfix">
   <h3>Heorku Dynos
-    <span class="beacon">
+    <span class="beacon" id="beacon">
       <span class="ring"></span>
       <span class="dot"></span>
     </span>
@@ -11,7 +11,7 @@
   <div id="history" data-update-url="<%= root_path %>stats" data-dynos-url="<%= root_path %>dynos/stats"></div>
   <div id="history-legend"></div>
   <script id="history-data" type="text/json">
-    <%= JSON.generate(@stats) %>
+    <%= JSON.generate(@dyno_stats) %>
   </script>
 </div>
 
@@ -24,7 +24,7 @@
       <th>Status</th>
       <th>Dynos</th>
     </thead>
-    <% @stats.each_pair do |key, stats| %>
+    <% @dyno_stats.each_pair do |key, stats| %>
       <tr>
         <td><%= key %></td>
         <td id="<%= key %>-updated"><%= stats[:updated] %></td>

@@ -15,9 +15,10 @@ module Sidekiq
         web.get '/dynos' do
           if app = ::Sidekiq::HerokuAutoscale.app
             app.ping!
-            @stats = app.stats
+            @dyno_stats = app.stats
+            puts @dyno_stats
           end
-          render(:erb, File.read(File.join(WEB_PATH, "#{ @stats ? 'index' : 'inactive' }.erb")))
+          render(:erb, File.read(File.join(WEB_PATH, "#{ @dyno_stats ? 'index' : 'inactive' }.erb")))
         end
 
         web.get '/dynos/stats' do
