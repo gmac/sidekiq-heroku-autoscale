@@ -5,7 +5,7 @@ $:.push(lib)
 
 Gem::Specification.new do |s|
   s.name        = 'sidekiq-heroku-autoscale'.freeze
-  s.version     = '0.0.1'
+  s.version     = Sidekiq::HerokuAutoscale::VERSION
 
   s.required_ruby_version = '~> 2.5'
   s.require_paths         = ['lib']
@@ -13,7 +13,7 @@ Gem::Specification.new do |s|
 
   s.authors     = ['Greg MacWilliam', 'Justin Love']
   s.summary     = 'Start, stop, and scale Sidekiq dynos on Heroku based on workload'
-  s.description = 'Start, stop, and scale Sidekiq dynos on Heroku based on workload'
+  s.description = s.summary
   s.homepage    = 'https://github.com/gmac/sidekiq-heroku-autoscale'
   s.licenses    = ['MIT']
 

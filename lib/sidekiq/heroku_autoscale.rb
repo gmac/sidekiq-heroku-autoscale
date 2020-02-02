@@ -4,6 +4,7 @@ require 'sidekiq/heroku_autoscale/poll_interval'
 require 'sidekiq/heroku_autoscale/process'
 require 'sidekiq/heroku_autoscale/queue_system'
 require 'sidekiq/heroku_autoscale/scale_strategy'
+require 'sidekiq/heroku_autoscale/version'
 
 module Sidekiq
   module HerokuAutoscale
