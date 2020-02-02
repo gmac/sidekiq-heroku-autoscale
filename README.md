@@ -4,6 +4,8 @@ This [Sidekiq](https://github.com/mperham/sidekiq) plugin allows Heroku dynos to
 
 This is a self-acknowledged rewrite of the [autoscaler](https://github.com/JustinLove/autoscaler) project. While this plugin borrows many foundation concepts from _autoscaler_, it rewrites core operations to address several logistical concerns and enable reporting through a web UI.
 
+![Web UI](web-preview.png)
+
 Tested with Sidekiq 6, but should be compatible with other recent Sidekiq versions.
 
 ## How it works
