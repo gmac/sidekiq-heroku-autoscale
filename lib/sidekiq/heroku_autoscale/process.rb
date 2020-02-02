@@ -5,7 +5,7 @@ module Sidekiq
       WAKE_THROTTLE = PollInterval.new(:wait_for_update!, before_update: 2)
       SHUTDOWN_POLL = PollInterval.new(:wait_for_shutdown!, before_update: 10)
 
-      attr_reader :app_name, :name, :throttle, :history
+      attr_reader :app_name, :name, :throttle, :history, :client
       attr_reader :queue_system, :scale_strategy
 
       attr_accessor :active_at, :updated_at, :quieted_at
