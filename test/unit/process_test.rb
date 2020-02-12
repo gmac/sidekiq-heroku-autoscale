@@ -5,8 +5,8 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   before do
     Sidekiq.redis {|c| c.flushdb }
-    @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG)
-    @subject2 = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG)
+    @subject = ::Sidekiq::HerokuAutoscale::Process.new(**TEST_CONFIG)
+    @subject2 = ::Sidekiq::HerokuAutoscale::Process.new(**TEST_CONFIG)
   end
 
   describe 'throttled?' do
@@ -323,7 +323,7 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   describe 'fetch_dyno_count' do
     before do
-      @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG.merge(client: TestClient.new))
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(**TEST_CONFIG.merge(client: TestClient.new))
     end
 
     it 'fetches total dynos for a process type via PlatformAPI' do
@@ -342,7 +342,7 @@ describe 'Sidekiq::HerokuAutoscale::Process' do
 
   describe 'set_dyno_count!' do
     before do
-      @subject = ::Sidekiq::HerokuAutoscale::Process.new(TEST_CONFIG.merge(client: TestClient.new))
+      @subject = ::Sidekiq::HerokuAutoscale::Process.new(**TEST_CONFIG.merge(client: TestClient.new))
     end
 
     it 'sets total dynos for a process type via PlatformAPI, and syncs count' do
