@@ -5,7 +5,7 @@ require 'minitest/pride'
 require 'minitest/autorun'
 require 'sidekiq-heroku-autoscale'
 
-Sidekiq.redis = Sidekiq::RedisConnection.create(:url => 'redis://localhost:9736')
+Sidekiq.redis = Sidekiq::RedisConnection.create(:url => ENV.fetch('TEST_REDIS_URL', 'redis://localhost:9736'))
 Sidekiq.logger = ::Logger.new(STDOUT)
 Sidekiq.logger.level = ::Logger::ERROR
 
