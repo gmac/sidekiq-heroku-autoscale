@@ -16,7 +16,7 @@ module Sidekiq
 
       def init(options)
         options = options.transform_keys(&:to_sym)
-        @app = HerokuApp.new(options)
+        @app = HerokuApp.new(**options)
 
         ::Sidekiq.logger.warn('Heroku platform API is not configured for Sidekiq::HerokuAutoscale') unless @app.live?
 

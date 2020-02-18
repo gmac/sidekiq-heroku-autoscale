@@ -24,8 +24,8 @@ module Sidekiq
         @app_name = app_name || name.to_s
         @name = name.to_s
         @client = client
-        @queue_system = QueueSystem.new(system)
-        @scale_strategy = ScaleStrategy.new(scale)
+        @queue_system = QueueSystem.new(**system)
+        @scale_strategy = ScaleStrategy.new(**scale)
 
         @dynos = 0
         @active_at = nil

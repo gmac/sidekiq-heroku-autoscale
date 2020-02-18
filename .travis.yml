@@ -1,0 +1,24 @@
+language: ruby
+rvm:
+- 2.5.7
+- 2.6.5
+- 2.7.0
+
+services:
+  - redis-server
+
+env:
+  - TEST_REDIS_URL=redis://localhost:6379
+
+before_install:
+  - gem install bundler
+
+script:
+  - bundle exec rake test
+
+jobs:
+  include:
+    - rvm: '2.5.1'
+      before_install:
+        - gem update --system
+        - gem install bundler
