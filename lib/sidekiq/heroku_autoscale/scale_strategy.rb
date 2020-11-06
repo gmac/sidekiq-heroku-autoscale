@@ -2,11 +2,12 @@ module Sidekiq
   module HerokuAutoscale
 
     class ScaleStrategy
-      attr_accessor :mode, :max_dynos, :workers_per_dyno, :min_factor
+      attr_accessor :mode, :max_dynos, :min_dynos, :workers_per_dyno, :min_factor
 
-      def initialize(mode: :binary, max_dynos: 1, workers_per_dyno: 25, min_factor: 0)
+      def initialize(mode: :binary, max_dynos: 1, min_dynos: 0, workers_per_dyno: 25, min_factor: 0)
         @mode = mode
         @max_dynos = max_dynos
+        @min_dynos = min_dynos
         @workers_per_dyno = workers_per_dyno
         @min_factor = min_factor
       end
@@ -43,7 +44,7 @@ module Sidekiq
         # don't scale down past number of currently engaged workers,
         # and don't scale up past maximum dynos
         ideal_dynos = ([0, scaled_capacity_percentage].max * @max_dynos).ceil
-        minimum_dynos = [sys.dynos, ideal_dynos].max
+        minimum_dynos = [sys.dynos, ideal_dynos, @min_dynos].max
         maximum_dynos = [minimum_dynos, @max_dynos].min
         [minimum_dynos, maximum_dynos].min
       end
