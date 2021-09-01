@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     sidekiq-heroku-autoscale (0.0.1)
-      platform-api (~> 2.0)
+      platform-api (~> 3.3.0)
       sidekiq (>= 5.0)
 
 GEM
@@ -19,7 +19,7 @@ GEM
     minitest (5.13.0)
     moneta (1.0.0)
     multi_json (1.14.1)
-    platform-api (2.2.0)
+    platform-api (3.3.0)
       heroics (~> 0.0.25)
       moneta (~> 1.0.0)
     rack (2.0.8)
