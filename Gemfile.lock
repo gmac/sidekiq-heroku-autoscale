@@ -8,7 +8,7 @@ PATH
 GEM
   remote: http://rubygems.org/
   specs:
-    connection_pool (2.2.2)
+    connection_pool (2.2.5)
     erubis (2.7.0)
     excon (0.71.1)
     heroics (0.0.25)
@@ -23,15 +23,12 @@ GEM
       heroics (~> 0.0.25)
       moneta (~> 1.0.0)
     rack (2.2.3)
-    rack-protection (2.0.8.1)
-      rack
     rake (12.3.3)
-    redis (4.1.3)
-    sidekiq (5.2.7)
-      connection_pool (~> 2.2, >= 2.2.2)
-      rack (>= 1.5.0)
-      rack-protection (>= 1.5.0)
-      redis (>= 3.3.5, < 5)
+    redis (4.5.1)
+    sidekiq (6.4.0)
+      connection_pool (>= 2.2.2)
+      rack (~> 2.0)
+      redis (>= 4.2.0)
 
 PLATFORMS
   ruby
